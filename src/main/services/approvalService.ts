@@ -1,0 +1,402 @@
+import { getPrismaClient } from './database';
+import {
+  ReimbursementStatus,
+  ApprovalType,
+  ApprovalAction,
+  BudgetCategory,
+} from '../types/enums';
+import {
+  getReimbursementById,
+  validateFinanceCategoryMatch,
+  getCategoryName,
+} from './reimbursementService';
+import { addBudgetUsedAmount, reduceBudgetUsedAmount, checkBudgetBalance } from './budgetService';
+import { createNotification } from './notificationService';
+import { sendToRenderer, showDesktopNotification } from '../main';
+
+export async function approveReimbursement(
+  reimbursementId: number,
+  approverId: number,
+  comment?: string
+): Promise<any> {
+  const prisma = getPrismaClient();
+  const reimbursement = await getReimbursementById(reimbursementId);
+
+  if (!reimbursement) {
+    throw new Error('报销单不存在');
+  }
+
+  if (
+    reimbursement.status !== ReimbursementStatus.PENDING_APPROVAL &&
+    reimbursement.status !== ReimbursementStatus.ESCALATED
+  ) {
+    throw new Error('当前状态不允许审批');
+  }
+
+  const approvalRecord = await prisma.approvalRecord.create({
+    data: {
+      reimbursementId,
+      approverId,
+      approvalType: ApprovalType.DEPARTMENT_HEAD,
+      action: ApprovalAction.APPROVE,
+      comment,
+    },
+    include: { approver: true },
+  });
+
+  const updated = await prisma.reimbursement.update({
+    where: { id: reimbursementId },
+    data: {
+      status: ReimbursementStatus.PENDING_FINANCE,
+      approvalDate: new Date(),
+    },
+    include: {
+      employee: { include: { department: true } },
+      department: true,
+      items: true,
+      approvals: { include: { approver: true } },
+    },
+  });
+
+  await createNotification({
+    employeeId: reimbursement.employeeId,
+    reimbursementId,
+    title: '报销单审批通过',
+    content: `您的报销单"${reimbursement.title}"已通过部门主管审批，等待财务审核。`,
+    type: 'approval',
+  });
+
+  const financeEmployees = await prisma.employee.findMany({
+    where: { role: { in: ['FINANCE_HEAD', 'ADMIN'] } },
+  });
+  for (const fin of financeEmployees) {
+    await createNotification({
+      employeeId: fin.id,
+      reimbursementId,
+      title: '新报销单待财务审核',
+      content: `报销单"${reimbursement.title}"(${reimbursement.totalAmount.toFixed(2)}元)已通过部门审批，请您审核。`,
+      type: 'finance',
+    });
+  }
+
+  sendToRenderer('notification:new', { type: 'approval', reimbursementId });
+  showDesktopNotification(
+    '报销单审批通过',
+    `报销单"${reimbursement.title}"已通过部门审批`
+  );
+
+  return updated;
+}
+
+export async function rejectReimbursement(
+  reimbursementId: number,
+  approverId: number,
+  comment: string
+): Promise<any> {
+  const prisma = getPrismaClient();
+  const reimbursement = await getReimbursementById(reimbursementId);
+
+  if (!reimbursement) {
+    throw new Error('报销单不存在');
+  }
+
+  if (
+    reimbursement.status !== ReimbursementStatus.PENDING_APPROVAL &&
+    reimbursement.status !== ReimbursementStatus.ESCALATED
+  ) {
+    throw new Error('当前状态不允许审批');
+  }
+
+  if (!comment || comment.trim() === '') {
+    throw new Error('拒绝时必须填写拒绝原因');
+  }
+
+  await prisma.approvalRecord.create({
+    data: {
+      reimbursementId,
+      approverId,
+      approvalType: ApprovalType.DEPARTMENT_HEAD,
+      action: ApprovalAction.REJECT,
+      comment,
+    },
+  });
+
+  const updated = await prisma.reimbursement.update({
+    where: { id: reimbursementId },
+    data: {
+      status: ReimbursementStatus.REJECTED,
+    },
+    include: {
+      employee: { include: { department: true } },
+      department: true,
+      items: true,
+      approvals: { include: { approver: true } },
+    },
+  });
+
+  await createNotification({
+    employeeId: reimbursement.employeeId,
+    reimbursementId,
+    title: '报销单被拒绝',
+    content: `您的报销单"${reimbursement.title}"被拒绝，原因：${comment}`,
+    type: 'rejection',
+  });
+
+  sendToRenderer('notification:new', { type: 'rejection', reimbursementId });
+  return updated;
+}
+
+export async function financeApprove(
+  reimbursementId: number,
+  approverId: number,
+  comment?: string
+): Promise<any> {
+  const prisma = getPrismaClient();
+  const reimbursement = await getReimbursementById(reimbursementId);
+
+  if (!reimbursement) {
+    throw new Error('报销单不存在');
+  }
+
+  if (reimbursement.status !== ReimbursementStatus.PENDING_FINANCE) {
+    throw new Error('当前状态不允许财务审核');
+  }
+
+  const itemsData = reimbursement.items.map((item: any) => ({
+    category: item.category as BudgetCategory,
+    amount: item.amount,
+    invoiceNo: item.invoiceNo,
+    invoiceDate: item.invoiceDate,
+    description: item.description || '',
+  }));
+
+  const categoryValidation = await validateFinanceCategoryMatch(itemsData);
+  if (!categoryValidation.valid) {
+    throw new Error(
+      `费用类别与预算科目不匹配: ${categoryValidation.errors.join('; ')}`
+    );
+  }
+
+  const submitDate = reimbursement.submitDate || new Date();
+  const year = submitDate.getFullYear();
+  const month = submitDate.getMonth() + 1;
+
+  if (reimbursement.departmentId) {
+    const categoryTotals: Record<string, number> = {};
+    for (const item of reimbursement.items) {
+      categoryTotals[item.category] = (categoryTotals[item.category] || 0) + item.amount;
+    }
+    for (const [category, total] of Object.entries(categoryTotals)) {
+      const budgetCheck = await checkBudgetBalance(
+        reimbursement.departmentId,
+        category as BudgetCategory,
+        year,
+        month,
+        total
+      );
+      if (!budgetCheck.sufficient) {
+        throw new Error(
+          `${getCategoryName(category as BudgetCategory)}月度预算不足，无法通过财务审核`
+        );
+      }
+      await addBudgetUsedAmount(
+        reimbursement.departmentId,
+        category as BudgetCategory,
+        year,
+        month,
+        total
+      );
+    }
+  }
+
+  await prisma.approvalRecord.create({
+    data: {
+      reimbursementId,
+      approverId,
+      approvalType: ApprovalType.FINANCE,
+      action: ApprovalAction.APPROVE,
+      comment,
+    },
+  });
+
+  const updated = await prisma.reimbursement.update({
+    where: { id: reimbursementId },
+    data: {
+      status: ReimbursementStatus.APPROVED,
+      financeDate: new Date(),
+    },
+    include: {
+      employee: { include: { department: true } },
+      department: true,
+      items: true,
+      approvals: { include: { approver: true } },
+    },
+  });
+
+  await createNotification({
+    employeeId: reimbursement.employeeId,
+    reimbursementId,
+    title: '报销单财务审核通过',
+    content: `您的报销单"${reimbursement.title}"已通过财务审核，等待付款。`,
+    type: 'finance',
+  });
+
+  sendToRenderer('notification:new', { type: 'finance_approved', reimbursementId });
+  return updated;
+}
+
+export async function financeReject(
+  reimbursementId: number,
+  approverId: number,
+  comment: string
+): Promise<any> {
+  const prisma = getPrismaClient();
+  const reimbursement = await getReimbursementById(reimbursementId);
+
+  if (!reimbursement) {
+    throw new Error('报销单不存在');
+  }
+
+  if (reimbursement.status !== ReimbursementStatus.PENDING_FINANCE) {
+    throw new Error('当前状态不允许财务审核');
+  }
+
+  if (!comment || comment.trim() === '') {
+    throw new Error('拒绝时必须填写拒绝原因');
+  }
+
+  await prisma.approvalRecord.create({
+    data: {
+      reimbursementId,
+      approverId,
+      approvalType: ApprovalType.FINANCE,
+      action: ApprovalAction.REJECT,
+      comment,
+    },
+  });
+
+  const updated = await prisma.reimbursement.update({
+    where: { id: reimbursementId },
+    data: {
+      status: ReimbursementStatus.REJECTED,
+    },
+    include: {
+      employee: { include: { department: true } },
+      department: true,
+      items: true,
+      approvals: { include: { approver: true } },
+    },
+  });
+
+  await createNotification({
+    employeeId: reimbursement.employeeId,
+    reimbursementId,
+    title: '报销单财务审核未通过',
+    content: `您的报销单"${reimbursement.title}"财务审核未通过，原因：${comment}`,
+    type: 'finance_rejection',
+  });
+
+  sendToRenderer('notification:new', { type: 'finance_rejected', reimbursementId });
+  return updated;
+}
+
+export async function markAsPaid(reimbursementId: number): Promise<any> {
+  const prisma = getPrismaClient();
+  const reimbursement = await getReimbursementById(reimbursementId);
+
+  if (!reimbursement) {
+    throw new Error('报销单不存在');
+  }
+
+  if (reimbursement.status !== ReimbursementStatus.APPROVED) {
+    throw new Error('只有已通过审核的报销单可以标记为已付款');
+  }
+
+  const updated = await prisma.reimbursement.update({
+    where: { id: reimbursementId },
+    data: {
+      status: ReimbursementStatus.PAID,
+      paidDate: new Date(),
+    },
+    include: {
+      employee: { include: { department: true } },
+      department: true,
+      items: true,
+      approvals: { include: { approver: true } },
+    },
+  });
+
+  await createNotification({
+    employeeId: reimbursement.employeeId,
+    reimbursementId,
+    title: '报销款项已支付',
+    content: `您的报销单"${reimbursement.title}"款项已支付，金额${reimbursement.totalAmount.toFixed(2)}元。`,
+    type: 'payment',
+  });
+
+  sendToRenderer('notification:new', { type: 'paid', reimbursementId });
+  return updated;
+}
+
+export async function checkAndEscalateOverdue(): Promise<any[]> {
+  const prisma = getPrismaClient();
+  const now = new Date();
+  const twoWorkingDaysAgo = new Date(now);
+  twoWorkingDaysAgo.setDate(twoWorkingDaysAgo.getDate() - 3);
+
+  const overdueReimbursements = await prisma.reimbursement.findMany({
+    where: {
+      status: { in: [ReimbursementStatus.PENDING_APPROVAL, ReimbursementStatus.ESCALATED] },
+      submitDate: {
+        lte: twoWorkingDaysAgo,
+      },
+    },
+    include: {
+      employee: { include: { department: true } },
+      department: true,
+      items: true,
+    },
+  });
+
+  const escalated: any[] = [];
+
+  for (const reimbursement of overdueReimbursements) {
+    if (reimbursement.status === ReimbursementStatus.PENDING_APPROVAL) {
+      await prisma.reimbursement.update({
+        where: { id: reimbursement.id },
+        data: { status: ReimbursementStatus.ESCALATED },
+      });
+
+      const managers = await prisma.employee.findMany({
+        where: { role: 'DEPARTMENT_HEAD' },
+      });
+
+      for (const manager of managers) {
+        await createNotification({
+          employeeId: manager.id,
+          reimbursementId: reimbursement.id,
+          title: '【催办】报销单审批超时自动升级',
+          content: `报销单"${reimbursement.title}"(${reimbursement.totalAmount.toFixed(2)}元)提交超过2个工作日未处理，已自动升级至经理审批。`,
+          type: 'escalation',
+        });
+      }
+
+      await createNotification({
+        employeeId: reimbursement.employeeId,
+        reimbursementId: reimbursement.id,
+        title: '报销单审批超时',
+        content: `您的报销单"${reimbursement.title}"提交超过2个工作日未处理，已自动升级至经理审批。`,
+        type: 'escalation',
+      });
+
+      escalated.push(reimbursement);
+      showDesktopNotification(
+        '审批超时自动升级',
+        `报销单"${reimbursement.title}"已升级至经理审批`
+      );
+    }
+  }
+
+  sendToRenderer('notification:new', { type: 'escalation_check', count: escalated.length });
+  return escalated;
+}

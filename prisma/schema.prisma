@@ -1,0 +1,108 @@
+// Prisma schema for Expense Reimbursement System
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Department {
+  id            Int       @id @default(autoincrement())
+  name          String    @unique
+  description   String?
+  createdAt     DateTime  @default(now())
+  employees     Employee[]
+  budgets       Budget[]
+  reimbursements Reimbursement[]
+}
+
+model Employee {
+  id            Int       @id @default(autoincrement())
+  employeeNo    String    @unique
+  name          String
+  password      String
+  email         String?
+  phone         String?
+  role          String    @default("EMPLOYEE")
+  departmentId  Int?
+  department    Department? @relation(fields: [departmentId], references: [id])
+  createdAt     DateTime  @default(now())
+  reimbursements Reimbursement[] @relation("EmployeeReimbursements")
+  approvals     ApprovalRecord[] @relation("ApproverApprovals")
+  notifications Notification[]
+}
+
+model Budget {
+  id            Int       @id @default(autoincrement())
+  departmentId  Int
+  department    Department @relation(fields: [departmentId], references: [id])
+  category      String
+  year          Int
+  month         Int
+  totalAmount   Float
+  usedAmount    Float     @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  @@unique([departmentId, category, year, month])
+}
+
+model Reimbursement {
+  id            Int       @id @default(autoincrement())
+  reimburseNo   String    @unique
+  title         String
+  employeeId    Int
+  employee      Employee  @relation("EmployeeReimbursements", fields: [employeeId], references: [id])
+  departmentId  Int?
+  department    Department? @relation(fields: [departmentId], references: [id])
+  totalAmount   Float
+  status        String    @default("DRAFT")
+  submitDate    DateTime?
+  approvalDate  DateTime?
+  financeDate   DateTime?
+  paidDate      DateTime?
+  description   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  items         ReimbursementItem[]
+  approvals     ApprovalRecord[]
+  notifications Notification[]
+}
+
+model ReimbursementItem {
+  id             Int       @id @default(autoincrement())
+  reimbursementId Int
+  reimbursement  Reimbursement @relation(fields: [reimbursementId], references: [id])
+  category       String
+  amount         Float
+  invoiceNo      String
+  invoiceDate    DateTime
+  description    String?
+  createdAt      DateTime  @default(now())
+}
+
+model ApprovalRecord {
+  id             Int       @id @default(autoincrement())
+  reimbursementId Int
+  reimbursement  Reimbursement @relation(fields: [reimbursementId], references: [id])
+  approverId     Int
+  approver       Employee  @relation("ApproverApprovals", fields: [approverId], references: [id])
+  approvalType   String
+  action         String
+  comment        String?
+  createdAt      DateTime  @default(now())
+}
+
+model Notification {
+  id             Int       @id @default(autoincrement())
+  employeeId     Int
+  employee       Employee  @relation(fields: [employeeId], references: [id])
+  reimbursementId Int?
+  reimbursement  Reimbursement? @relation(fields: [reimbursementId], references: [id])
+  title          String
+  content        String
+  isRead         Boolean   @default(false)
+  type           String
+  createdAt      DateTime  @default(now())
+}
