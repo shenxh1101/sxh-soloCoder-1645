@@ -192,19 +192,21 @@ const ReimbursementForm: React.FC = () => {
     try {
       const values = await form.validateFields();
 
-      if (items.some((item) => !item.amount || item.amount <= 0)) {
-        message.error('请填写有效的费用金额');
-        return;
-      }
-      if (items.some((item) => !item.invoiceNo.trim())) {
-        message.error('请填写发票号码');
-        return;
-      }
+      const localErrors: string[] = [];
+      items.forEach((item, idx) => {
+        if (!item.amount || item.amount <= 0) {
+          localErrors.push(`第${idx + 1}项: 请填写有效的费用金额（必须大于0）`);
+        }
+        if (!item.invoiceNo.trim()) {
+          localErrors.push(`第${idx + 1}项: 发票号码不能为空`);
+        }
+      });
 
       setSubmitting(true);
       const { valid, errors } = await validateItems();
+      const allErrors = [...localErrors, ...errors];
 
-      if (!valid) {
+      if (allErrors.length > 0) {
         Modal.error({
           title: '校验不通过，无法提交',
           width: 620,
@@ -212,7 +214,7 @@ const ReimbursementForm: React.FC = () => {
           content: (
             <div>
               <p style={{ marginBottom: 12, color: '#595959' }}>
-                共发现 <strong style={{ color: '#ff4d4f' }}>{errors.length}</strong> 个问题，请修正后再次提交：
+                共发现 <strong style={{ color: '#ff4d4f' }}>{allErrors.length}</strong> 个问题，请修正后再次提交：
               </p>
               <div
                 style={{
@@ -225,12 +227,12 @@ const ReimbursementForm: React.FC = () => {
                 }}
               >
                 <ol style={{ margin: 0, paddingLeft: 24 }}>
-                  {errors.map((err, idx) => (
+                  {allErrors.map((err, idx) => (
                     <li
                       key={idx}
                       style={{
                         color: '#ff4d4f',
-                        marginBottom: idx < errors.length - 1 ? 8 : 0,
+                        marginBottom: idx < allErrors.length - 1 ? 8 : 0,
                         lineHeight: 1.6,
                       }}
                     >

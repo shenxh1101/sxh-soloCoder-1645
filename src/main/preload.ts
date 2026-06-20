@@ -24,6 +24,9 @@ const electronAPI = {
     ipcRenderer.invoke('budget:getByDeptAndCategory', deptId, category, year, month),
   createBudget: (data: any) => ipcRenderer.invoke('budget:create', data),
   updateBudget: (id: number, data: any) => ipcRenderer.invoke('budget:update', id, data),
+  getBudgetWarnings: (params?: any) => ipcRenderer.invoke('budget:getWarnings', params),
+  getBudgetReimbursements: (departmentId: number, category: string, year: number, month: number) =>
+    ipcRenderer.invoke('budget:getReimbursements', departmentId, category, year, month),
 
   getReimbursements: (params?: any) => ipcRenderer.invoke('reimbursement:getAll', params),
   getReimbursementById: (id: number) => ipcRenderer.invoke('reimbursement:getById', id),
@@ -42,11 +45,16 @@ const electronAPI = {
   financeReject: (id: number, approverId: number, comment: string) =>
     ipcRenderer.invoke('reimbursement:financeReject', id, approverId, comment),
   markAsPaid: (id: number) => ipcRenderer.invoke('reimbursement:markAsPaid', id),
+  batchFinanceApprove: (ids: number[]) => ipcRenderer.invoke('reimbursement:batchFinanceApprove', ids),
+  batchFinanceReject: (ids: number[], comment: string) =>
+    ipcRenderer.invoke('reimbursement:batchFinanceReject', ids, comment),
 
   getMyNotifications: (employeeId: number) =>
     ipcRenderer.invoke('notification:getMy', employeeId),
   markNotificationRead: (id: number) =>
     ipcRenderer.invoke('notification:markRead', id),
+  markAllNotificationsRead: (employeeId: number) =>
+    ipcRenderer.invoke('notification:markAllRead', employeeId),
 
   getStatisticsByDepartment: (year: number, month: number) =>
     ipcRenderer.invoke('statistics:byDepartment', year, month),

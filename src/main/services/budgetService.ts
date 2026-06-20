@@ -119,3 +119,142 @@ export async function checkBudgetBalance(
     used: budget.usedAmount,
   };
 }
+
+export type BudgetWarningLevel = 'normal' | 'warning' | 'danger';
+
+export interface BudgetWarningItem {
+  id: number;
+  departmentId: number;
+  departmentName: string;
+  category: BudgetCategory;
+  categoryName: string;
+  year: number;
+  month: number;
+  totalAmount: number;
+  usedAmount: number;
+  remainingAmount: number;
+  usagePercent: number;
+  warningLevel: BudgetWarningLevel;
+}
+
+export async function getBudgetWarnings(params?: {
+  departmentId?: number;
+  year?: number;
+  month?: number;
+  warningLevel?: BudgetWarningLevel;
+}): Promise<BudgetWarningItem[]> {
+  const prisma = getPrismaClient();
+  const now = new Date();
+  const {
+    departmentId,
+    year = now.getFullYear(),
+    month = now.getMonth() + 1,
+    warningLevel,
+  } = params || {};
+
+  const where: any = { year, month };
+  if (departmentId) where.departmentId = departmentId;
+
+  const budgets = await prisma.budget.findMany({
+    where,
+    include: { department: true },
+    orderBy: [{ departmentId: 'asc' }, { category: 'asc' }],
+  });
+
+  const results: BudgetWarningItem[] = [];
+
+  for (const budget of budgets) {
+    const usagePercent = budget.totalAmount > 0
+      ? Math.round((budget.usedAmount / budget.totalAmount) * 100)
+      : 0;
+
+    let level: BudgetWarningLevel = 'normal';
+    if (usagePercent >= 100) level = 'danger';
+    else if (usagePercent >= 70) level = 'warning';
+
+    if (warningLevel && level !== warningLevel) continue;
+
+    const categoryNames: Record<BudgetCategory, string> = {
+      [BudgetCategory.TRAVEL]: '差旅费',
+      [BudgetCategory.ENTERTAINMENT]: '业务招待费',
+      [BudgetCategory.OFFICE_SUPPLIES]: '办公用品费',
+      [BudgetCategory.MEAL]: '餐饮费',
+      [BudgetCategory.TRANSPORTATION]: '交通费',
+      [BudgetCategory.COMMUNICATION]: '通讯费',
+      [BudgetCategory.TRAINING]: '培训费',
+      [BudgetCategory.OTHER]: '其他费用',
+    };
+
+    results.push({
+      id: budget.id,
+      departmentId: budget.departmentId,
+      departmentName: budget.department?.name || '未知部门',
+      category: budget.category as BudgetCategory,
+      categoryName: categoryNames[budget.category as BudgetCategory] || budget.category,
+      year: budget.year,
+      month: budget.month,
+      totalAmount: budget.totalAmount,
+      usedAmount: budget.usedAmount,
+      remainingAmount: budget.totalAmount - budget.usedAmount,
+      usagePercent,
+      warningLevel: level,
+    });
+  }
+
+  return results;
+}
+
+export async function getBudgetReimbursements(
+  departmentId: number,
+  category: BudgetCategory,
+  year: number,
+  month: number
+): Promise<any[]> {
+  const prisma = getPrismaClient();
+  const startDate = new Date(year, month - 1, 1);
+  const endDate = new Date(year, month, 0, 23, 59, 59, 999);
+
+  const items = await prisma.reimbursementItem.findMany({
+    where: {
+      category: category as string,
+      reimbursement: {
+        departmentId,
+        status: { in: ['PENDING_FINANCE', 'APPROVED', 'PAID'] },
+        submitDate: { gte: startDate, lte: endDate },
+      },
+    },
+    include: {
+      reimbursement: {
+        include: {
+          employee: true,
+          department: true,
+        },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  return items.map((item) => ({
+    id: item.id,
+    reimbursementId: item.reimbursementId,
+    reimburseNo: item.reimbursement.reimburseNo,
+    title: item.reimbursement.title,
+    employeeName: item.reimbursement.employee?.name || '未知',
+    departmentName: item.reimbursement.department?.name || '未知',
+    amount: item.amount,
+    invoiceNo: item.invoiceNo,
+    invoiceDate: item.invoiceDate,
+    description: item.description,
+    status: item.reimbursement.status,
+    submitDate: item.reimbursement.submitDate,
+  }));
+}
+
+export async function markAllNotificationsRead(employeeId: number): Promise<number> {
+  const prisma = getPrismaClient();
+  const result = await prisma.notification.updateMany({
+    where: { employeeId, isRead: false },
+    data: { isRead: true },
+  });
+  return result.count;
+}

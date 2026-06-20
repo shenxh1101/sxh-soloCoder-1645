@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Layout, Menu, Avatar, Dropdown, Badge, Button, Popover, List, Typography } from 'antd';
+import { Layout, Menu, Avatar, Dropdown, Badge, Button, Popover, List, Typography, message, Tag } from 'antd';
 import {
   DashboardOutlined,
   FileTextOutlined,
@@ -70,6 +70,18 @@ const AppLayout: React.FC = () => {
     loadNotifications();
   };
 
+  const handleNotificationClick = async (item: NotificationType) => {
+    if (!item.isRead) {
+      await api.markNotificationRead(item.id);
+      loadNotifications();
+    }
+    if (item.reimbursementId) {
+      navigate(`/reimbursement/${item.reimbursementId}`);
+    } else if (item.type === 'budget' || item.type === 'escalation') {
+      navigate('/budget');
+    }
+  };
+
   const menuItems = menus.map((item) => ({
     key: item.path,
     icon: iconMap[item.icon],
@@ -101,9 +113,47 @@ const AppLayout: React.FC = () => {
 
   const notificationContent = (
     <div style={{ width: 360 }}>
-      <div style={{ padding: '8px 16px', borderBottom: '1px solid #f0f0f0', fontWeight: 600 }}>
-        通知消息
+      <div
+        style={{
+          padding: '8px 16px',
+          borderBottom: '1px solid #f0f0f0',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+        }}
+      >
+        <span style={{ fontWeight: 600 }}>通知消息</span>
+        <Button
+          type="link"
+          size="small"
+          onClick={() => navigate('/notifications')}
+        >
+          查看全部
+        </Button>
       </div>
+      {unreadCount > 0 && (
+        <div
+          style={{
+            padding: '8px 16px',
+            background: '#f6ffed',
+            borderBottom: '1px solid #f0f0f0',
+          }}
+        >
+          <Button
+            type="link"
+            size="small"
+            onClick={async () => {
+              if (user) {
+                const count = await api.markAllNotificationsRead(user.id);
+                message.success(`已将 ${count} 条通知标记为已读`);
+                loadNotifications();
+              }
+            }}
+          >
+            一键全部已读
+          </Button>
+        </div>
+      )}
       <List
         dataSource={notifications.slice(0, 8)}
         locale={{ emptyText: '暂无通知' }}
@@ -111,10 +161,17 @@ const AppLayout: React.FC = () => {
           <List.Item
             key={item.id}
             className={item.isRead ? 'notification-item' : 'notification-item unread'}
-            onClick={() => handleMarkRead(item.id)}
+            onClick={() => handleNotificationClick(item)}
+            style={{ cursor: 'pointer' }}
           >
             <List.Item.Meta
-              title={<Text strong>{item.title}</Text>}
+              title={
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Text strong>{item.title}</Text>
+                  {!item.isRead && <Tag color="red">新</Tag>}
+                  {item.reimbursementId && <Tag color="blue">可跳转</Tag>}
+                </div>
+              }
               description={
                 <div>
                   <div style={{ color: '#666', fontSize: 13 }}>{item.content}</div>

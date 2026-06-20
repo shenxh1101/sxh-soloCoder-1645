@@ -149,3 +149,26 @@ export const ROLE_NAMES: Record<Role, string> = {
   FINANCE_HEAD: '财务主管',
   ADMIN: '系统管理员',
 };
+
+export type BudgetWarningLevel = 'normal' | 'warning' | 'danger';
+
+export interface BudgetWarningItem {
+  id: number;
+  departmentId: number;
+  departmentName: string;
+  category: BudgetCategory;
+  categoryName: string;
+  year: number;
+  month: number;
+  totalAmount: number;
+  usedAmount: number;
+  remainingAmount: number;
+  usagePercent: number;
+  warningLevel: BudgetWarningLevel;
+}
+
+export const APPROVAL_TYPE_NAMES: Record<string, string> = {
+  DEPARTMENT_HEAD: '部门主管审批',
+  MANAGER_ESCALATION: '经理复核',
+  FINANCE: '财务审核',
+};

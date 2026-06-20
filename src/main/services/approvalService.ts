@@ -14,6 +14,8 @@ import { addBudgetUsedAmount, reduceBudgetUsedAmount, checkBudgetBalance } from 
 import { createNotification } from './notificationService';
 import { sendToRenderer, showDesktopNotification } from '../main';
 
+const ESCALATION_THRESHOLD = 5000;
+
 export async function approveReimbursement(
   reimbursementId: number,
   approverId: number,
@@ -33,23 +35,38 @@ export async function approveReimbursement(
     throw new Error('当前状态不允许审批');
   }
 
+  const isFirstApproval = reimbursement.status === ReimbursementStatus.PENDING_APPROVAL;
+  const approvalType = isFirstApproval ? ApprovalType.DEPARTMENT_HEAD : ApprovalType.MANAGER_ESCALATION;
+
   const approvalRecord = await prisma.approvalRecord.create({
     data: {
       reimbursementId,
       approverId,
-      approvalType: ApprovalType.DEPARTMENT_HEAD,
+      approvalType,
       action: ApprovalAction.APPROVE,
       comment,
     },
     include: { approver: true },
   });
 
+  let nextStatus = ReimbursementStatus.PENDING_FINANCE;
+  let nextStepMessage = '等待财务审核';
+
+  if (isFirstApproval && reimbursement.totalAmount >= ESCALATION_THRESHOLD) {
+    nextStatus = ReimbursementStatus.ESCALATED;
+    nextStepMessage = '已通过部门主管审批，等待经理复核';
+  }
+
+  const updateData: any = {
+    status: nextStatus,
+  };
+  if (nextStatus === ReimbursementStatus.PENDING_FINANCE) {
+    updateData.approvalDate = new Date();
+  }
+
   const updated = await prisma.reimbursement.update({
     where: { id: reimbursementId },
-    data: {
-      status: ReimbursementStatus.PENDING_FINANCE,
-      approvalDate: new Date(),
-    },
+    data: updateData,
     include: {
       employee: { include: { department: true } },
       department: true,
@@ -61,28 +78,43 @@ export async function approveReimbursement(
   await createNotification({
     employeeId: reimbursement.employeeId,
     reimbursementId,
-    title: '报销单审批通过',
-    content: `您的报销单"${reimbursement.title}"已通过部门主管审批，等待财务审核。`,
+    title: isFirstApproval ? '部门主管审批通过' : '经理复核通过',
+    content: `您的报销单"${reimbursement.title}"${nextStepMessage}。`,
     type: 'approval',
   });
 
-  const financeEmployees = await prisma.employee.findMany({
-    where: { role: { in: ['FINANCE_HEAD', 'ADMIN'] } },
-  });
-  for (const fin of financeEmployees) {
-    await createNotification({
-      employeeId: fin.id,
-      reimbursementId,
-      title: '新报销单待财务审核',
-      content: `报销单"${reimbursement.title}"(${reimbursement.totalAmount.toFixed(2)}元)已通过部门审批，请您审核。`,
-      type: 'finance',
+  if (nextStatus === ReimbursementStatus.PENDING_FINANCE) {
+    const financeEmployees = await prisma.employee.findMany({
+      where: { role: { in: ['FINANCE_HEAD', 'ADMIN'] } },
     });
+    for (const fin of financeEmployees) {
+      await createNotification({
+        employeeId: fin.id,
+        reimbursementId,
+        title: '新报销单待财务审核',
+        content: `报销单"${reimbursement.title}"(${reimbursement.totalAmount.toFixed(2)}元)已通过审批，请您审核。`,
+        type: 'finance',
+      });
+    }
+  } else if (nextStatus === ReimbursementStatus.ESCALATED) {
+    const managers = await prisma.employee.findMany({
+      where: { role: { in: ['ADMIN'] } },
+    });
+    for (const manager of managers) {
+      await createNotification({
+        employeeId: manager.id,
+        reimbursementId,
+        title: '大额报销单待经理复核',
+        content: `报销单"${reimbursement.title}"(${reimbursement.totalAmount.toFixed(2)}元)金额超过${ESCALATION_THRESHOLD}元，已通过部门主管审批，请您复核。`,
+        type: 'escalation',
+      });
+    }
   }
 
   sendToRenderer('notification:new', { type: 'approval', reimbursementId });
   showDesktopNotification(
-    '报销单审批通过',
-    `报销单"${reimbursement.title}"已通过部门审批`
+    isFirstApproval ? '部门主管审批通过' : '经理复核通过',
+    `报销单"${reimbursement.title}"${nextStepMessage}`
   );
 
   return updated;
@@ -111,11 +143,15 @@ export async function rejectReimbursement(
     throw new Error('拒绝时必须填写拒绝原因');
   }
 
+  const isFirstApproval = reimbursement.status === ReimbursementStatus.PENDING_APPROVAL;
+  const approvalType = isFirstApproval ? ApprovalType.DEPARTMENT_HEAD : ApprovalType.MANAGER_ESCALATION;
+  const rejectTitle = isFirstApproval ? '报销单被部门主管拒绝' : '报销单经经理复核被拒绝';
+
   await prisma.approvalRecord.create({
     data: {
       reimbursementId,
       approverId,
-      approvalType: ApprovalType.DEPARTMENT_HEAD,
+      approvalType,
       action: ApprovalAction.REJECT,
       comment,
     },
@@ -137,7 +173,7 @@ export async function rejectReimbursement(
   await createNotification({
     employeeId: reimbursement.employeeId,
     reimbursementId,
-    title: '报销单被拒绝',
+    title: rejectTitle,
     content: `您的报销单"${reimbursement.title}"被拒绝，原因：${comment}`,
     type: 'rejection',
   });

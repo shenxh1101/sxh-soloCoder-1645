@@ -17,6 +17,13 @@ export const MENU_ITEMS: MenuItem[] = [
     roles: ['EMPLOYEE', 'DEPARTMENT_HEAD', 'FINANCE_HEAD', 'ADMIN'],
   },
   {
+    key: 'notifications',
+    label: '通知中心',
+    icon: 'MailOutlined',
+    path: '/notifications',
+    roles: ['EMPLOYEE', 'DEPARTMENT_HEAD', 'FINANCE_HEAD', 'ADMIN'],
+  },
+  {
     key: 'my-reimbursements',
     label: '我的报销',
     icon: 'FileTextOutlined',

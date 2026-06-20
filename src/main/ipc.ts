@@ -10,6 +10,7 @@ import * as authService from './services/authService';
 import * as path from 'path';
 import { getMainWindow } from './main';
 import { Role } from './types/enums';
+import { getPrismaClient } from './services/database';
 
 export function setupIPCHandlers() {
   ipcMain.handle('auth:login', async (_event, employeeNo, password) => {
@@ -240,5 +241,74 @@ export function setupIPCHandlers() {
   ipcMain.handle('scheduler:checkOverdue', async () => {
     authService.requireRole([Role.ADMIN]);
     return approvalService.checkAndEscalateOverdue();
+  });
+
+  ipcMain.handle('budget:getWarnings', async (_event, params) => {
+    authService.requireRole([Role.FINANCE_HEAD, Role.ADMIN, Role.DEPARTMENT_HEAD]);
+    return budgetService.getBudgetWarnings(params);
+  });
+
+  ipcMain.handle('budget:getReimbursements', async (_event, departmentId, category, year, month) => {
+    authService.requireRole([Role.FINANCE_HEAD, Role.ADMIN, Role.DEPARTMENT_HEAD]);
+    const currentUser = authService.getCurrentAuthUser();
+    if (currentUser?.role === Role.DEPARTMENT_HEAD) {
+      if (currentUser.departmentId !== departmentId) {
+        throw new Error('部门主管只能查看本部门预算占用明细');
+      }
+    }
+    return budgetService.getBudgetReimbursements(departmentId, category, year, month);
+  });
+
+  ipcMain.handle('notification:markAllRead', async (_event, employeeId) => {
+    authService.requireLogin();
+    const currentUser = authService.getCurrentAuthUser();
+    if (!currentUser || currentUser.id !== employeeId) {
+      throw new Error('只能标记自己的通知为已读');
+    }
+    return budgetService.markAllNotificationsRead(employeeId);
+  });
+
+  ipcMain.handle('reimbursement:batchFinanceApprove', async (_event, ids) => {
+    authService.requireRole([Role.FINANCE_HEAD, Role.ADMIN]);
+    const results = {
+      success: [] as number[],
+      failed: [] as { id: number; reimburseNo: string; reason: string }[],
+    };
+    for (const id of ids) {
+      try {
+        await approvalService.financeApprove(id, '批量财务审核通过', authService.getCurrentAuthUser()?.id);
+        results.success.push(id);
+      } catch (err: any) {
+        const reim = await getPrismaClient().reimbursement.findUnique({ where: { id } });
+        results.failed.push({
+          id,
+          reimburseNo: reim?.reimburseNo || String(id),
+          reason: err?.message || '未知错误',
+        });
+      }
+    }
+    return results;
+  });
+
+  ipcMain.handle('reimbursement:batchFinanceReject', async (_event, ids, comment) => {
+    authService.requireRole([Role.FINANCE_HEAD, Role.ADMIN]);
+    const results = {
+      success: [] as number[],
+      failed: [] as { id: number; reimburseNo: string; reason: string }[],
+    };
+    for (const id of ids) {
+      try {
+        await approvalService.financeReject(id, comment || '批量财务审核退回', authService.getCurrentAuthUser()?.id);
+        results.success.push(id);
+      } catch (err: any) {
+        const reim = await getPrismaClient().reimbursement.findUnique({ where: { id } });
+        results.failed.push({
+          id,
+          reimburseNo: reim?.reimburseNo || String(id),
+          reason: err?.message || '未知错误',
+        });
+      }
+    }
+    return results;
   });
 }

@@ -12,6 +12,7 @@ import Budget from './pages/Budget';
 import Statistics from './pages/Statistics';
 import Department from './pages/Department';
 import Employee from './pages/Employee';
+import NotificationCenter from './pages/NotificationCenter';
 import { getCurrentUser } from './utils/auth';
 import { Employee as EmployeeType, Role, ROLE_NAMES } from './types';
 import { hasPermission } from './config/menuConfig';
@@ -90,6 +91,7 @@ const App: React.FC = () => {
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="my-reimbursements" element={<MyReimbursements />} />
+          <Route path="notifications" element={<NotificationCenter />} />
           <Route path="reimbursement/new" element={<ReimbursementForm />} />
           <Route path="reimbursement/:id" element={<ReimbursementDetail />} />
           <Route path="reimbursement/edit/:id" element={<ReimbursementForm />} />

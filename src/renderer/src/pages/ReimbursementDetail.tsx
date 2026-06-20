@@ -33,6 +33,7 @@ import {
   STATUS_COLORS,
   CATEGORY_NAMES,
   ROLE_NAMES,
+  APPROVAL_TYPE_NAMES,
 } from '../types';
 
 const { TextArea } = Input;
@@ -234,40 +235,73 @@ const ReimbursementDetail: React.FC = () => {
     }
   };
 
+  const ESCALATION_THRESHOLD = 5000;
+  const isLargeAmount = detail && detail.totalAmount >= ESCALATION_THRESHOLD;
+
   const getSteps = () => {
     const steps = [
       { title: '提交申请', status: detail?.submitDate ? 'finish' : (detail?.status === 'DRAFT' ? 'wait' : 'process') },
       { title: '部门审批', status: 'wait' as const },
-      { title: '财务审核', status: 'wait' as const },
-      { title: '完成支付', status: 'wait' as const },
     ];
 
-    if (
-      detail?.status === 'PENDING_APPROVAL' ||
-      detail?.status === 'ESCALATED'
-    ) {
-      steps[1].status = 'process';
-    } else if (
-      detail?.status === 'PENDING_FINANCE' ||
-      detail?.approvalDate
-    ) {
-      steps[1].status = 'finish';
-      steps[2].status =
-        detail?.status === 'PENDING_FINANCE' ? 'process' : 'wait';
+    if (isLargeAmount) {
+      steps.push({ title: '经理复核', status: 'wait' as const });
     }
 
-    if (
-      detail?.status === 'APPROVED' ||
-      detail?.status === 'PAID' ||
-      detail?.financeDate
-    ) {
+    steps.push(
+      { title: '财务审核', status: 'wait' as const },
+      { title: '完成支付', status: 'wait' as const }
+    );
+
+    if (detail?.status === 'PENDING_APPROVAL') {
+      steps[1].status = 'process';
+    }
+
+    if (detail?.status === 'ESCALATED') {
       steps[1].status = 'finish';
-      steps[2].status = 'finish';
-      steps[3].status = detail?.status === 'PAID' ? 'finish' : 'process';
+      if (isLargeAmount) {
+        steps[2].status = 'process';
+      } else {
+        steps[2].status = 'process';
+      }
+    }
+
+    if (detail?.status === 'PENDING_FINANCE' || detail?.approvalDate) {
+      steps[1].status = 'finish';
+      if (isLargeAmount) {
+        steps[2].status = 'finish';
+        steps[3].status = 'process';
+      } else {
+        steps[2].status = 'process';
+      }
+    }
+
+    if (detail?.status === 'APPROVED' || detail?.status === 'PAID' || detail?.financeDate) {
+      steps[1].status = 'finish';
+      if (isLargeAmount) {
+        steps[2].status = 'finish';
+        steps[3].status = 'finish';
+      } else {
+        steps[2].status = 'finish';
+      }
+      const finalStepIdx = isLargeAmount ? 4 : 3;
+      steps[finalStepIdx].status = detail?.status === 'PAID' ? 'finish' : 'process';
     }
 
     if (detail?.status === 'REJECTED') {
-      steps[1].status = 'error';
+      if (detail.approvals && detail.approvals.length > 0) {
+        const lastApproval = detail.approvals[detail.approvals.length - 1];
+        if (lastApproval.approvalType === 'MANAGER_ESCALATION') {
+          steps[1].status = 'finish';
+          if (isLargeAmount) {
+            steps[2].status = 'error';
+          }
+        } else {
+          steps[1].status = 'error';
+        }
+      } else {
+        steps[1].status = 'error';
+      }
     }
 
     return steps;
@@ -459,11 +493,11 @@ const ReimbursementDetail: React.FC = () => {
                 <div
                   key={approval.id}
                   style={{
-                    padding: '12px 16px',
-                    marginBottom: idx < detail.approvals!.length - 1 ? 12 : 0,
+                    padding: '16px 20px',
+                    marginBottom: idx < detail.approvals!.length - 1 ? 16 : 0,
                     background: '#fafafa',
-                    borderRadius: 6,
-                    borderLeft: `3px solid ${
+                    borderRadius: 8,
+                    borderLeft: `4px solid ${
                       approval.action === 'APPROVE' ? '#52c41a' : '#ff4d4f'
                     }`,
                   }}
@@ -472,26 +506,42 @@ const ReimbursementDetail: React.FC = () => {
                     style={{
                       display: 'flex',
                       justifyContent: 'space-between',
-                      marginBottom: 8,
+                      alignItems: 'center',
+                      marginBottom: 12,
                     }}
                   >
-                    <div>
-                      <strong>{approval.approver?.name}</strong>
-                      <Tag style={{ marginLeft: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                      <Tag color="blue">第{idx + 1}步</Tag>
+                      <Tag color="purple">
+                        {APPROVAL_TYPE_NAMES[approval.approvalType] || approval.approvalType}
+                      </Tag>
+                      <strong style={{ fontSize: 15 }}>{approval.approver?.name}</strong>
+                      <Tag>
                         {ROLE_NAMES[approval.approver?.role || 'EMPLOYEE']}
                       </Tag>
                     </div>
                     <Tag color={approval.action === 'APPROVE' ? 'green' : 'red'}>
-                      {approval.action === 'APPROVE' ? '通过' : '拒绝'}
+                      {approval.action === 'APPROVE' ? '✓ 通过' : '✗ 拒绝'}
                     </Tag>
                   </div>
                   {approval.comment && (
-                    <div style={{ color: '#666', marginBottom: 4 }}>
-                      原因：{approval.comment}
+                    <div
+                      style={{
+                        background: '#fff',
+                        padding: '10px 12px',
+                        borderRadius: 6,
+                        marginBottom: 10,
+                        border: '1px solid #e8e8e8',
+                        whiteSpace: 'pre-wrap',
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      <span style={{ color: '#8c8c8c', marginRight: 8 }}>{approval.action === 'APPROVE' ? '批注：' : '拒绝原因：'}</span>
+                      {approval.comment}
                     </div>
                   )}
-                  <div style={{ color: '#999', fontSize: 12 }}>
-                    {dayjs(approval.createdAt).format('YYYY-MM-DD HH:mm:ss')}
+                  <div style={{ color: '#999', fontSize: 12, textAlign: 'right' }}>
+                    处理时间：{dayjs(approval.createdAt).format('YYYY-MM-DD HH:mm:ss')}
                   </div>
                 </div>
               ))}

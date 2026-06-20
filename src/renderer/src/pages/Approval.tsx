@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Button, Tag, Input, Space, Modal, message, Card, Row, Col, Statistic } from 'antd';
-import { SearchOutlined, EyeOutlined } from '@ant-design/icons';
+import { Table, Button, Tag, Input, Space, Modal, message, Card, Row, Col, Statistic, Alert } from 'antd';
+import { SearchOutlined, EyeOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
 import { getCurrentUser, api } from '../utils/auth';
 import { Reimbursement, STATUS_NAMES, STATUS_COLORS } from '../types';
+
+const ESCALATION_THRESHOLD = 5000;
 
 const Approval: React.FC = () => {
   const user = getCurrentUser();
@@ -16,7 +18,7 @@ const Approval: React.FC = () => {
   const [pageSize, setPageSize] = useState(10);
   const [keyword, setKeyword] = useState('');
   const [status, setStatus] = useState<string>('PENDING_APPROVAL');
-  const [stats, setStats] = useState({ pending: 0, escalated: 0, total: 0 });
+  const [stats, setStats] = useState({ pending: 0, escalated: 0, managerReview: 0, total: 0 });
 
   const loadData = async () => {
     if (!user) return;
@@ -32,10 +34,15 @@ const Approval: React.FC = () => {
       setData(result?.data || []);
       setTotal(result?.total || 0);
 
-      const [pendingResult, escalatedResult, allResult] = await Promise.all([
+      const [pendingResult, escalatedResult, managerResult, allResult] = await Promise.all([
         api.getReimbursements({
           departmentId: user.role === 'ADMIN' ? undefined : user.departmentId,
           status: 'PENDING_APPROVAL',
+          pageSize: 1000,
+        }),
+        api.getReimbursements({
+          departmentId: user.role === 'ADMIN' ? undefined : user.departmentId,
+          status: 'ESCALATED',
           pageSize: 1000,
         }),
         api.getReimbursements({
@@ -49,9 +56,14 @@ const Approval: React.FC = () => {
         }),
       ]);
 
+      const managerReviewCount = (managerResult?.data || []).filter(
+        (r: Reimbursement) => r.totalAmount >= ESCALATION_THRESHOLD
+      ).length;
+
       setStats({
         pending: pendingResult?.total || 0,
         escalated: escalatedResult?.total || 0,
+        managerReview: managerReviewCount,
         total: allResult?.total || 0,
       });
     } finally {
@@ -82,6 +94,18 @@ const Approval: React.FC = () => {
     }
   };
 
+  const getApprovalStepLabel = (record: Reimbursement) => {
+    if (record.totalAmount >= ESCALATION_THRESHOLD) {
+      if (record.status === 'PENDING_APPROVAL') {
+        return <Tag color="blue">第一步：部门主管审批</Tag>;
+      }
+      if (record.status === 'ESCALATED') {
+        return <Tag color="orange">第二步：经理复核</Tag>;
+      }
+    }
+    return null;
+  };
+
   const columns = [
     {
       title: '单号',
@@ -105,17 +129,29 @@ const Approval: React.FC = () => {
     {
       title: '金额',
       dataIndex: 'totalAmount',
-      width: 120,
-      render: (val: number) => <span className="amount-text">¥{val.toFixed(2)}</span>,
+      width: 140,
+      render: (val: number) => (
+        <div>
+          <span className="amount-text">¥{val.toFixed(2)}</span>
+          {val >= ESCALATION_THRESHOLD && (
+            <Tag color="orange" style={{ marginLeft: 8, marginTop: 4 }}>
+              <InfoCircleOutlined /> 大额需经理复核
+            </Tag>
+          )}
+        </div>
+      ),
     },
     {
-      title: '状态',
+      title: '审批阶段',
       dataIndex: 'status',
-      width: 140,
-      render: (val: string) => (
-        <Tag color={(STATUS_COLORS as any)[val]}>
-          {(STATUS_NAMES as any)[val]}
-        </Tag>
+      width: 150,
+      render: (val: string, record: Reimbursement) => (
+        <div>
+          <Tag color={(STATUS_COLORS as any)[val]}>
+            {(STATUS_NAMES as any)[val]}
+          </Tag>
+          {getApprovalStepLabel(record)}
+        </div>
       ),
     },
     {
@@ -157,26 +193,48 @@ const Approval: React.FC = () => {
     <div className="page-container">
       <div className="page-title">审批管理</div>
 
+      <Alert
+        message="审批规则说明"
+        description={
+          <div>
+            <p style={{ margin: 0 }}>• 金额 <strong>¥{ESCALATION_THRESHOLD.toFixed(2)}以下</strong>：部门主管审批通过 → 财务审核</p>
+            <p style={{ margin: '4px 0 0 0' }}>• 金额 <strong>¥{ESCALATION_THRESHOLD.toFixed(2)}及以上</strong>：部门主管审批通过 → 经理复核 → 财务审核</p>
+          </div>
+        }
+        type="info"
+        showIcon
+        style={{ marginBottom: 16 }}
+      />
+
       <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-        <Col xs={24} sm={8}>
+        <Col xs={24} sm={6}>
           <Card>
             <Statistic
-              title="待审批"
+              title="待部门审批"
               value={stats.pending}
               valueStyle={{ color: '#faad14' }}
             />
           </Card>
         </Col>
-        <Col xs={24} sm={8}>
+        <Col xs={24} sm={6}>
           <Card>
             <Statistic
-              title="已升级超时"
+              title="待经理复核"
+              value={stats.managerReview}
+              valueStyle={{ color: '#ff7a45' }}
+            />
+          </Card>
+        </Col>
+        <Col xs={24} sm={6}>
+          <Card>
+            <Statistic
+              title="已超时升级"
               value={stats.escalated}
               valueStyle={{ color: '#ff4d4f' }}
             />
           </Card>
         </Col>
-        <Col xs={24} sm={8}>
+        <Col xs={24} sm={6}>
           <Card>
             <Statistic title="审批总量" value={stats.total} />
           </Card>
@@ -200,7 +258,7 @@ const Approval: React.FC = () => {
               setPage(1);
             }}
           >
-            待审批({stats.pending})
+            待部门审批({stats.pending})
           </Button>
           <Button
             type={status === 'ESCALATED' ? 'primary' : 'default'}
@@ -209,7 +267,7 @@ const Approval: React.FC = () => {
               setPage(1);
             }}
           >
-            超时升级({stats.escalated})
+            经理复核({stats.managerReview})
           </Button>
           <Button
             type={!status ? 'primary' : 'default'}
