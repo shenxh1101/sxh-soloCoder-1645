@@ -78,7 +78,7 @@ const AppLayout: React.FC = () => {
     if (item.reimbursementId) {
       navigate(`/reimbursement/${item.reimbursementId}`);
     } else if ((item.type === 'budget') && (item as any).budgetId) {
-      navigate(`/budget?tab=warning&budgetId=${(item as any).budgetId}`);
+      navigate(`/budget?tab=warning&budgetId=${(item as any).budgetId}&openDetail=true`);
     } else if (item.type === 'escalation') {
       navigate('/approval?tab=escalated');
     }

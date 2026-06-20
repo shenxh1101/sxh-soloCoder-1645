@@ -69,8 +69,8 @@ const NotificationCenter: React.FC = () => {
     if (item.reimbursementId) {
       navigate(`/reimbursement/${item.reimbursementId}`);
     } else if (item.type === 'budget' && item.budgetId) {
-      if (user?.role === 'FINANCE_HEAD' || user?.role === 'ADMIN') {
-        navigate(`/budget?tab=warning&budgetId=${item.budgetId}`);
+      if (user?.role === 'FINANCE_HEAD' || user?.role === 'ADMIN' || user?.role === 'DEPARTMENT_HEAD') {
+        navigate(`/budget?tab=warning&budgetId=${item.budgetId}&openDetail=true`);
       }
     } else if (item.type === 'escalation') {
       if (user?.role === 'ADMIN') {

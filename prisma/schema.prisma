@@ -32,6 +32,8 @@ model Employee {
   reimbursements Reimbursement[] @relation("EmployeeReimbursements")
   approvals     ApprovalRecord[] @relation("ApproverApprovals")
   notifications Notification[]
+  appliedAdjustments BudgetAdjustment[] @relation("ApplicantAdjustments")
+  approvedAdjustments BudgetAdjustment[] @relation("ApproverAdjustments")
 }
 
 model Budget {
@@ -45,6 +47,7 @@ model Budget {
   usedAmount    Float     @default(0)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+  adjustments   BudgetAdjustment[]
   @@unique([departmentId, category, year, month])
 }
 
@@ -106,4 +109,22 @@ model Notification {
   isRead           Boolean   @default(false)
   type             String
   createdAt        DateTime  @default(now())
+}
+
+model BudgetAdjustment {
+  id             Int       @id @default(autoincrement())
+  budgetId       Int
+  budget         Budget    @relation(fields: [budgetId], references: [id])
+  applicantId    Int
+  applicant      Employee  @relation("ApplicantAdjustments", fields: [applicantId], references: [id])
+  approverId     Int?
+  approver       Employee? @relation("ApproverAdjustments", fields: [approverId], references: [id])
+  adjustmentType String // INCREASE: 追加, DECREASE: 调减
+  amount         Float    // 调整金额（正数）
+  reason         String
+  status         String   // PENDING: 待审批, APPROVED: 已通过, REJECTED: 已拒绝
+  approvalComment String?
+  approvedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 }

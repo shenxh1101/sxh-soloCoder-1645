@@ -195,3 +195,43 @@ export const APPROVAL_TYPE_NAMES: Record<string, string> = {
   MANAGER_ESCALATION: '经理复核',
   FINANCE: '财务审核',
 };
+
+export type BudgetAdjustmentType = 'INCREASE' | 'DECREASE';
+export type BudgetAdjustmentStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
+
+export interface BudgetAdjustment {
+  id: number;
+  budgetId: number;
+  budget?: Budget & {
+    department: Department;
+  };
+  applicantId: number;
+  applicant?: Employee;
+  approverId?: number;
+  approver?: Employee;
+  adjustmentType: BudgetAdjustmentType;
+  amount: number;
+  reason: string;
+  status: BudgetAdjustmentStatus;
+  approvalComment?: string;
+  approvedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const ADJUSTMENT_TYPE_NAMES: Record<BudgetAdjustmentType, string> = {
+  INCREASE: '追加预算',
+  DECREASE: '调减预算',
+};
+
+export const ADJUSTMENT_STATUS_NAMES: Record<BudgetAdjustmentStatus, string> = {
+  PENDING: '待审批',
+  APPROVED: '已通过',
+  REJECTED: '已拒绝',
+};
+
+export const ADJUSTMENT_STATUS_COLORS: Record<BudgetAdjustmentStatus, string> = {
+  PENDING: 'processing',
+  APPROVED: 'success',
+  REJECTED: 'error',
+};

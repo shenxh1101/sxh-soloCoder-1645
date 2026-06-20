@@ -2,6 +2,7 @@ import { ipcMain, dialog, shell } from 'electron';
 import * as employeeService from './services/employeeService';
 import * as departmentService from './services/departmentService';
 import * as budgetService from './services/budgetService';
+import * as budgetAdjustmentService from './services/budgetAdjustmentService';
 import * as reimbursementService from './services/reimbursementService';
 import * as approvalService from './services/approvalService';
 import * as notificationService from './services/notificationService';
@@ -77,7 +78,12 @@ export function setupIPCHandlers() {
 
   ipcMain.handle('budget:getAll', async (_event, params) => {
     authService.requireRole([Role.FINANCE_HEAD, Role.ADMIN, Role.DEPARTMENT_HEAD]);
-    return budgetService.getAllBudgets(params);
+    const currentUser = authService.getCurrentAuthUser();
+    const finalParams = { ...params };
+    if (currentUser?.role === Role.DEPARTMENT_HEAD) {
+      finalParams.departmentId = currentUser.departmentId;
+    }
+    return budgetService.getAllBudgets(finalParams);
   });
 
   ipcMain.handle('budget:getByDeptAndCategory', async (_event, deptId, category, year, month) => {
@@ -245,7 +251,12 @@ export function setupIPCHandlers() {
 
   ipcMain.handle('budget:getWarnings', async (_event, params) => {
     authService.requireRole([Role.FINANCE_HEAD, Role.ADMIN, Role.DEPARTMENT_HEAD]);
-    return budgetService.getBudgetWarnings(params);
+    const currentUser = authService.getCurrentAuthUser();
+    const finalParams = { ...params };
+    if (currentUser?.role === Role.DEPARTMENT_HEAD) {
+      finalParams.departmentId = currentUser.departmentId;
+    }
+    return budgetService.getBudgetWarnings(finalParams);
   });
 
   ipcMain.handle('budget:getReimbursements', async (_event, departmentId, category, year, month) => {
@@ -257,6 +268,67 @@ export function setupIPCHandlers() {
       }
     }
     return budgetService.getBudgetReimbursements(departmentId, category, year, month);
+  });
+
+  ipcMain.handle('budgetAdjustment:create', async (_event, params) => {
+    authService.requireRole([Role.DEPARTMENT_HEAD, Role.ADMIN]);
+    const currentUser = authService.getCurrentAuthUser();
+    if (currentUser?.role === Role.DEPARTMENT_HEAD) {
+      const budget = await getPrismaClient().budget.findUnique({
+        where: { id: params.budgetId },
+      });
+      if (budget && budget.departmentId !== currentUser.departmentId) {
+        throw new Error('部门主管只能调整本部门预算');
+      }
+    }
+    return budgetAdjustmentService.createBudgetAdjustment({
+      ...params,
+      applicantId: currentUser!.id,
+    });
+  });
+
+  ipcMain.handle('budgetAdjustment:approve', async (_event, adjustmentId, comment) => {
+    authService.requireRole([Role.FINANCE_HEAD, Role.ADMIN]);
+    const currentUser = authService.getCurrentAuthUser();
+    return budgetAdjustmentService.approveBudgetAdjustment(
+      adjustmentId,
+      currentUser!.id,
+      comment
+    );
+  });
+
+  ipcMain.handle('budgetAdjustment:reject', async (_event, adjustmentId, comment) => {
+    authService.requireRole([Role.FINANCE_HEAD, Role.ADMIN]);
+    const currentUser = authService.getCurrentAuthUser();
+    return budgetAdjustmentService.rejectBudgetAdjustment(
+      adjustmentId,
+      currentUser!.id,
+      comment
+    );
+  });
+
+  ipcMain.handle('budgetAdjustment:getList', async (_event, params) => {
+    authService.requireRole([Role.DEPARTMENT_HEAD, Role.FINANCE_HEAD, Role.ADMIN]);
+    const currentUser = authService.getCurrentAuthUser();
+    const finalParams = { ...params };
+    if (currentUser?.role === Role.DEPARTMENT_HEAD) {
+      finalParams.departmentId = currentUser.departmentId;
+    }
+    return budgetAdjustmentService.getBudgetAdjustments(finalParams);
+  });
+
+  ipcMain.handle('budgetAdjustment:getByBudgetId', async (_event, budgetId) => {
+    authService.requireRole([Role.DEPARTMENT_HEAD, Role.FINANCE_HEAD, Role.ADMIN]);
+    const currentUser = authService.getCurrentAuthUser();
+    if (currentUser?.role === Role.DEPARTMENT_HEAD) {
+      const budget = await getPrismaClient().budget.findUnique({
+        where: { id: budgetId },
+      });
+      if (budget && budget.departmentId !== currentUser.departmentId) {
+        throw new Error('部门主管只能查看本部门预算调整记录');
+      }
+    }
+    return budgetAdjustmentService.getBudgetAdjustmentsByBudgetId(budgetId);
   });
 
   ipcMain.handle('notification:markAllRead', async (_event, employeeId) => {

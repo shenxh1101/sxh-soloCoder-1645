@@ -28,6 +28,15 @@ const electronAPI = {
   getBudgetReimbursements: (departmentId: number, category: string, year: number, month: number) =>
     ipcRenderer.invoke('budget:getReimbursements', departmentId, category, year, month),
 
+  createBudgetAdjustment: (params: any) => ipcRenderer.invoke('budgetAdjustment:create', params),
+  approveBudgetAdjustment: (adjustmentId: number, comment?: string) =>
+    ipcRenderer.invoke('budgetAdjustment:approve', adjustmentId, comment),
+  rejectBudgetAdjustment: (adjustmentId: number, comment: string) =>
+    ipcRenderer.invoke('budgetAdjustment:reject', adjustmentId, comment),
+  getBudgetAdjustments: (params?: any) => ipcRenderer.invoke('budgetAdjustment:getList', params),
+  getBudgetAdjustmentsByBudgetId: (budgetId: number) =>
+    ipcRenderer.invoke('budgetAdjustment:getByBudgetId', budgetId),
+
   getReimbursements: (params?: any) => ipcRenderer.invoke('reimbursement:getAll', params),
   getReimbursementById: (id: number) => ipcRenderer.invoke('reimbursement:getById', id),
   createReimbursement: (data: any) => ipcRenderer.invoke('reimbursement:create', data),

@@ -56,7 +56,7 @@ export const MENU_ITEMS: MenuItem[] = [
     label: '预算管理',
     icon: 'PieChartOutlined',
     path: '/budget',
-    roles: ['FINANCE_HEAD', 'ADMIN'],
+    roles: ['DEPARTMENT_HEAD', 'FINANCE_HEAD', 'ADMIN'],
   },
   {
     key: 'statistics',

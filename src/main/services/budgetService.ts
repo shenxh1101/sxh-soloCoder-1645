@@ -102,7 +102,10 @@ export async function addBudgetUsedAmount(
         budget.id,
         budgetTitle,
         newUsagePercent,
-        'warning'
+        'warning',
+        year,
+        month,
+        category
       );
     }
     if (oldUsagePercent < 100 && newUsagePercent >= 100) {
@@ -111,7 +114,10 @@ export async function addBudgetUsedAmount(
         budget.id,
         budgetTitle,
         newUsagePercent,
-        'danger'
+        'danger',
+        year,
+        month,
+        category
       );
     }
   }
@@ -122,7 +128,10 @@ async function createBudgetWarningNotification(
   budgetId: number,
   budgetTitle: string,
   usagePercent: number,
-  level: 'warning' | 'danger'
+  level: 'warning' | 'danger',
+  year: number,
+  month: number,
+  category: BudgetCategory
 ): Promise<void> {
   const prisma = getPrismaClient();
 
@@ -141,8 +150,8 @@ async function createBudgetWarningNotification(
     : `【预算预警】${budgetTitle} 使用率达 ${usagePercent}%`;
 
   const content = level === 'danger'
-    ? `${budgetTitle} 预算使用率已达 ${usagePercent}%，已超支，请及时关注并调整后续报销计划。`
-    : `${budgetTitle} 预算使用率已达 ${usagePercent}%，接近超支，请合理控制后续报销金额。`;
+    ? `${budgetTitle} 预算使用率已达 ${usagePercent}%，已超支，请及时关注并调整后续报销计划。点击查看占用明细。`
+    : `${budgetTitle} 预算使用率已达 ${usagePercent}%，接近超支，请合理控制后续报销金额。点击查看占用明细。`;
 
   for (const admin of admins) {
     const existing = await prisma.notification.findFirst({
@@ -162,6 +171,13 @@ async function createBudgetWarningNotification(
         title,
         content,
         budgetId,
+        budgetUrlParams: {
+          budgetId,
+          departmentId,
+          year,
+          month,
+          category,
+        },
       });
     }
   }

@@ -35,7 +35,25 @@ export async function approveReimbursement(
     throw new Error('当前状态不允许审批');
   }
 
+  const approver = await prisma.employee.findUnique({ where: { id: approverId } });
+  if (!approver) {
+    throw new Error('审批人不存在');
+  }
+
   const isFirstApproval = reimbursement.status === ReimbursementStatus.PENDING_APPROVAL;
+
+  if (isFirstApproval && approver.role === 'DEPARTMENT_HEAD') {
+    if (reimbursement.departmentId !== approver.departmentId) {
+      throw new Error('您只能审批本部门的报销单');
+    }
+  }
+
+  if (reimbursement.status === ReimbursementStatus.ESCALATED) {
+    if (approver.role !== 'ADMIN') {
+      throw new Error('只有管理员可以处理经理复核');
+    }
+  }
+
   const approvalType = isFirstApproval ? ApprovalType.DEPARTMENT_HEAD : ApprovalType.MANAGER_ESCALATION;
 
   const approvalRecord = await prisma.approvalRecord.create({
@@ -143,7 +161,25 @@ export async function rejectReimbursement(
     throw new Error('拒绝时必须填写拒绝原因');
   }
 
+  const approver = await prisma.employee.findUnique({ where: { id: approverId } });
+  if (!approver) {
+    throw new Error('审批人不存在');
+  }
+
   const isFirstApproval = reimbursement.status === ReimbursementStatus.PENDING_APPROVAL;
+
+  if (isFirstApproval && approver.role === 'DEPARTMENT_HEAD') {
+    if (reimbursement.departmentId !== approver.departmentId) {
+      throw new Error('您只能拒绝本部门的报销单');
+    }
+  }
+
+  if (reimbursement.status === ReimbursementStatus.ESCALATED) {
+    if (approver.role !== 'ADMIN') {
+      throw new Error('只有管理员可以处理经理复核');
+    }
+  }
+
   const approvalType = isFirstApproval ? ApprovalType.DEPARTMENT_HEAD : ApprovalType.MANAGER_ESCALATION;
   const rejectTitle = isFirstApproval ? '报销单被部门主管拒绝' : '报销单经经理复核被拒绝';
 
