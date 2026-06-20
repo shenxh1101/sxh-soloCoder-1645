@@ -9,6 +9,7 @@ import {
   Modal,
   Input,
   Steps,
+  Tabs,
   message,
   Empty,
   Row,
@@ -23,6 +24,8 @@ import {
   DollarOutlined,
   SendOutlined,
   EditOutlined,
+  UserOutlined,
+  CrownOutlined,
 } from '@ant-design/icons';
 import { useNavigate, useParams } from 'react-router-dom';
 import dayjs from 'dayjs';
@@ -489,62 +492,254 @@ const ReimbursementDetail: React.FC = () => {
 
           {detail?.approvals && detail.approvals.length > 0 && (
             <Card title="审批记录">
-              {detail.approvals.map((approval, idx) => (
-                <div
-                  key={approval.id}
-                  style={{
-                    padding: '16px 20px',
-                    marginBottom: idx < detail.approvals!.length - 1 ? 16 : 0,
-                    background: '#fafafa',
-                    borderRadius: 8,
-                    borderLeft: `4px solid ${
-                      approval.action === 'APPROVE' ? '#52c41a' : '#ff4d4f'
-                    }`,
-                  }}
-                >
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      marginBottom: 12,
-                    }}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-                      <Tag color="blue">第{idx + 1}步</Tag>
-                      <Tag color="purple">
-                        {APPROVAL_TYPE_NAMES[approval.approvalType] || approval.approvalType}
-                      </Tag>
-                      <strong style={{ fontSize: 15 }}>{approval.approver?.name}</strong>
-                      <Tag>
-                        {ROLE_NAMES[approval.approver?.role || 'EMPLOYEE']}
-                      </Tag>
-                    </div>
-                    <Tag color={approval.action === 'APPROVE' ? 'green' : 'red'}>
-                      {approval.action === 'APPROVE' ? '✓ 通过' : '✗ 拒绝'}
-                    </Tag>
-                  </div>
-                  {approval.comment && (
-                    <div
-                      style={{
-                        background: '#fff',
-                        padding: '10px 12px',
-                        borderRadius: 6,
-                        marginBottom: 10,
-                        border: '1px solid #e8e8e8',
-                        whiteSpace: 'pre-wrap',
-                        lineHeight: 1.6,
-                      }}
-                    >
-                      <span style={{ color: '#8c8c8c', marginRight: 8 }}>{approval.action === 'APPROVE' ? '批注：' : '拒绝原因：'}</span>
-                      {approval.comment}
-                    </div>
-                  )}
-                  <div style={{ color: '#999', fontSize: 12, textAlign: 'right' }}>
-                    处理时间：{dayjs(approval.createdAt).format('YYYY-MM-DD HH:mm:ss')}
-                  </div>
-                </div>
-              ))}
+              <Tabs
+                defaultActiveKey="all"
+                items={[
+                  {
+                    key: 'all',
+                    label: '全部记录',
+                    children: detail.approvals.map((approval, idx) => (
+                      <div
+                        key={approval.id}
+                        style={{
+                          padding: '16px 20px',
+                          marginBottom: idx < detail.approvals!.length - 1 ? 16 : 0,
+                          background: '#fafafa',
+                          borderRadius: 8,
+                          borderLeft: `4px solid ${
+                            approval.action === 'APPROVE' ? '#52c41a' : '#ff4d4f'
+                          }`,
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: 12,
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                            <Tag color="blue">第{idx + 1}步</Tag>
+                            <Tag color="purple">
+                              {APPROVAL_TYPE_NAMES[approval.approvalType] || approval.approvalType}
+                            </Tag>
+                            <strong style={{ fontSize: 15 }}>{approval.approver?.name}</strong>
+                            <Tag>
+                              {ROLE_NAMES[approval.approver?.role || 'EMPLOYEE']}
+                            </Tag>
+                          </div>
+                          <Tag color={approval.action === 'APPROVE' ? 'green' : 'red'}>
+                            {approval.action === 'APPROVE' ? '✓ 通过' : '✗ 拒绝'}
+                          </Tag>
+                        </div>
+                        {approval.comment && (
+                          <div
+                            style={{
+                              background: '#fff',
+                              padding: '10px 12px',
+                              borderRadius: 6,
+                              marginBottom: 10,
+                              border: '1px solid #e8e8e8',
+                              whiteSpace: 'pre-wrap',
+                              lineHeight: 1.6,
+                            }}
+                          >
+                            <span style={{ color: '#8c8c8c', marginRight: 8 }}>{approval.action === 'APPROVE' ? '批注：' : '拒绝原因：'}</span>
+                            {approval.comment}
+                          </div>
+                        )}
+                        <div style={{ color: '#999', fontSize: 12, textAlign: 'right' }}>
+                          处理时间：{dayjs(approval.createdAt).format('YYYY-MM-DD HH:mm:ss')}
+                        </div>
+                      </div>
+                    )),
+                  },
+                  {
+                    key: 'department',
+                    label: (
+                      <span>
+                        <UserOutlined /> 部门意见
+                      </span>
+                    ),
+                    children: (
+                      <div>
+                        {detail.approvals
+                          .filter((a) => a.approvalType === 'DEPARTMENT_HEAD')
+                          .map((approval, idx, arr) => (
+                            <div
+                              key={approval.id}
+                              style={{
+                                padding: '16px 20px',
+                                marginBottom: idx < arr.length - 1 ? 16 : 0,
+                                background: '#f0f9ff',
+                                borderRadius: 8,
+                                borderLeft: `4px solid ${
+                                  approval.action === 'APPROVE' ? '#52c41a' : '#ff4d4f'
+                                }`,
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                                <Tag color="blue">部门主管审批</Tag>
+                                <strong style={{ fontSize: 15 }}>{approval.approver?.name}</strong>
+                                <Tag>{ROLE_NAMES[approval.approver?.role || 'EMPLOYEE']}</Tag>
+                                <Tag color={approval.action === 'APPROVE' ? 'green' : 'red'}>
+                                  {approval.action === 'APPROVE' ? '✓ 通过' : '✗ 拒绝'}
+                                </Tag>
+                              </div>
+                              {approval.comment && (
+                                <div
+                                  style={{
+                                    background: '#fff',
+                                    padding: '10px 12px',
+                                    borderRadius: 6,
+                                    marginBottom: 8,
+                                    border: '1px solid #bae7ff',
+                                    whiteSpace: 'pre-wrap',
+                                    lineHeight: 1.6,
+                                  }}
+                                >
+                                  <span style={{ color: '#8c8c8c', marginRight: 8 }}>
+                                    {approval.action === 'APPROVE' ? '部门批注：' : '拒绝原因：'}
+                                  </span>
+                                  {approval.comment}
+                                </div>
+                              )}
+                              <div style={{ color: '#999', fontSize: 12, textAlign: 'right' }}>
+                                处理时间：{dayjs(approval.createdAt).format('YYYY-MM-DD HH:mm:ss')}
+                              </div>
+                            </div>
+                          ))}
+                        {detail.approvals.filter((a) => a.approvalType === 'DEPARTMENT_HEAD').length === 0 && (
+                          <Empty description="暂无部门审批意见" />
+                        )}
+                      </div>
+                    ),
+                  },
+                  {
+                    key: 'manager',
+                    label: (
+                      <span>
+                        <CrownOutlined /> 经理意见
+                      </span>
+                    ),
+                    children: (
+                      <div>
+                        {detail.approvals
+                          .filter((a) => a.approvalType === 'MANAGER_ESCALATION' || a.approvalType === 'MANAGER')
+                          .map((approval, idx, arr) => (
+                            <div
+                              key={approval.id}
+                              style={{
+                                padding: '16px 20px',
+                                marginBottom: idx < arr.length - 1 ? 16 : 0,
+                                background: '#fffbe6',
+                                borderRadius: 8,
+                                borderLeft: `4px solid ${
+                                  approval.action === 'APPROVE' ? '#52c41a' : '#ff4d4f'
+                                }`,
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                                <Tag color="gold">经理复核</Tag>
+                                <strong style={{ fontSize: 15 }}>{approval.approver?.name}</strong>
+                                <Tag>{ROLE_NAMES[approval.approver?.role || 'EMPLOYEE']}</Tag>
+                                <Tag color={approval.action === 'APPROVE' ? 'green' : 'red'}>
+                                  {approval.action === 'APPROVE' ? '✓ 通过' : '✗ 拒绝'}
+                                </Tag>
+                              </div>
+                              {approval.comment && (
+                                <div
+                                  style={{
+                                    background: '#fff',
+                                    padding: '10px 12px',
+                                    borderRadius: 6,
+                                    marginBottom: 8,
+                                    border: '1px solid #ffe58f',
+                                    whiteSpace: 'pre-wrap',
+                                    lineHeight: 1.6,
+                                  }}
+                                >
+                                  <span style={{ color: '#8c8c8c', marginRight: 8 }}>
+                                    {approval.action === 'APPROVE' ? '经理批注：' : '拒绝原因：'}
+                                  </span>
+                                  {approval.comment}
+                                </div>
+                              )}
+                              <div style={{ color: '#999', fontSize: 12, textAlign: 'right' }}>
+                                处理时间：{dayjs(approval.createdAt).format('YYYY-MM-DD HH:mm:ss')}
+                              </div>
+                            </div>
+                          ))}
+                        {detail.approvals.filter((a) => a.approvalType === 'MANAGER_ESCALATION' || a.approvalType === 'MANAGER').length === 0 && (
+                          <Empty description="暂无经理复核意见" />
+                        )}
+                      </div>
+                    ),
+                  },
+                  {
+                    key: 'finance',
+                    label: (
+                      <span>
+                        <DollarOutlined /> 财务意见
+                      </span>
+                    ),
+                    children: (
+                      <div>
+                        {detail.approvals
+                          .filter((a) => a.approvalType === 'FINANCE')
+                          .map((approval, idx, arr) => (
+                            <div
+                              key={approval.id}
+                              style={{
+                                padding: '16px 20px',
+                                marginBottom: idx < arr.length - 1 ? 16 : 0,
+                                background: '#f6ffed',
+                                borderRadius: 8,
+                                borderLeft: `4px solid ${
+                                  approval.action === 'APPROVE' ? '#52c41a' : '#ff4d4f'
+                                }`,
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                                <Tag color="green">财务审核</Tag>
+                                <strong style={{ fontSize: 15 }}>{approval.approver?.name}</strong>
+                                <Tag>{ROLE_NAMES[approval.approver?.role || 'EMPLOYEE']}</Tag>
+                                <Tag color={approval.action === 'APPROVE' ? 'green' : 'red'}>
+                                  {approval.action === 'APPROVE' ? '✓ 通过' : '✗ 拒绝'}
+                                </Tag>
+                              </div>
+                              {approval.comment && (
+                                <div
+                                  style={{
+                                    background: '#fff',
+                                    padding: '10px 12px',
+                                    borderRadius: 6,
+                                    marginBottom: 8,
+                                    border: '1px solid #b7eb8f',
+                                    whiteSpace: 'pre-wrap',
+                                    lineHeight: 1.6,
+                                  }}
+                                >
+                                  <span style={{ color: '#8c8c8c', marginRight: 8 }}>
+                                    {approval.action === 'APPROVE' ? '财务批注：' : '退回原因：'}
+                                  </span>
+                                  {approval.comment}
+                                </div>
+                              )}
+                              <div style={{ color: '#999', fontSize: 12, textAlign: 'right' }}>
+                                处理时间：{dayjs(approval.createdAt).format('YYYY-MM-DD HH:mm:ss')}
+                              </div>
+                            </div>
+                          ))}
+                        {detail.approvals.filter((a) => a.approvalType === 'FINANCE').length === 0 && (
+                          <Empty description="暂无财务审核意见" />
+                        )}
+                      </div>
+                    ),
+                  },
+                ]}
+              />
             </Card>
           )}
         </Col>

@@ -270,16 +270,39 @@ export function setupIPCHandlers() {
 
   ipcMain.handle('reimbursement:batchFinanceApprove', async (_event, ids) => {
     authService.requireRole([Role.FINANCE_HEAD, Role.ADMIN]);
+    const prisma = getPrismaClient();
     const results = {
       success: [] as number[],
       failed: [] as { id: number; reimburseNo: string; reason: string }[],
     };
+    const currentUser = authService.getCurrentAuthUser();
+    if (!currentUser) {
+      throw new Error('未登录');
+    }
+    const approverId = currentUser.id;
+
     for (const id of ids) {
       try {
-        await approvalService.financeApprove(id, '批量财务审核通过', authService.getCurrentAuthUser()?.id);
+        const reim = await prisma.reimbursement.findUnique({ where: { id } });
+        if (!reim) {
+          results.failed.push({ id, reimburseNo: String(id), reason: '报销单不存在' });
+          continue;
+        }
+
+        const validation = await approvalService.validateFinanceApprove(id);
+        if (!validation.valid) {
+          results.failed.push({
+            id,
+            reimburseNo: reim.reimburseNo,
+            reason: validation.errors.join('；'),
+          });
+          continue;
+        }
+
+        await approvalService.financeApprove(id, approverId, '批量财务审核通过');
         results.success.push(id);
       } catch (err: any) {
-        const reim = await getPrismaClient().reimbursement.findUnique({ where: { id } });
+        const reim = await prisma.reimbursement.findUnique({ where: { id } });
         results.failed.push({
           id,
           reimburseNo: reim?.reimburseNo || String(id),
@@ -292,16 +315,37 @@ export function setupIPCHandlers() {
 
   ipcMain.handle('reimbursement:batchFinanceReject', async (_event, ids, comment) => {
     authService.requireRole([Role.FINANCE_HEAD, Role.ADMIN]);
+    const prisma = getPrismaClient();
     const results = {
       success: [] as number[],
       failed: [] as { id: number; reimburseNo: string; reason: string }[],
     };
+    const currentUser = authService.getCurrentAuthUser();
+    if (!currentUser) {
+      throw new Error('未登录');
+    }
+    const approverId = currentUser.id;
+
     for (const id of ids) {
       try {
-        await approvalService.financeReject(id, comment || '批量财务审核退回', authService.getCurrentAuthUser()?.id);
+        const reim = await prisma.reimbursement.findUnique({ where: { id } });
+        if (!reim) {
+          results.failed.push({ id, reimburseNo: String(id), reason: '报销单不存在' });
+          continue;
+        }
+        if (reim.status !== 'PENDING_FINANCE') {
+          results.failed.push({
+            id,
+            reimburseNo: reim.reimburseNo,
+            reason: `当前状态为${reim.status}，不允许退回`,
+          });
+          continue;
+        }
+
+        await approvalService.financeReject(id, approverId, comment || '批量财务审核退回');
         results.success.push(id);
       } catch (err: any) {
-        const reim = await getPrismaClient().reimbursement.findUnique({ where: { id } });
+        const reim = await prisma.reimbursement.findUnique({ where: { id } });
         results.failed.push({
           id,
           reimburseNo: reim?.reimburseNo || String(id),

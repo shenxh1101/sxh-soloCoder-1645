@@ -28,6 +28,7 @@ import {
   CheckCircleOutlined,
   EyeOutlined,
 } from '@ant-design/icons';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { api } from '../utils/auth';
 import {
   Budget as BudgetModel,
@@ -38,6 +39,8 @@ import {
 } from '../types';
 
 const Budget: React.FC = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [activeTab, setActiveTab] = useState<'list' | 'warning'>('list');
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<BudgetModel[]>([]);
@@ -58,6 +61,7 @@ const Budget: React.FC = () => {
   const [selectedWarning, setSelectedWarning] = useState<BudgetWarningItem | null>(null);
   const [detailData, setDetailData] = useState<any[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [highlightBudgetId, setHighlightBudgetId] = useState<number | null>(null);
 
   const loadDepartments = async () => {
     const depts = await api.getAllDepartments();
@@ -100,6 +104,26 @@ const Budget: React.FC = () => {
   useEffect(() => {
     loadDepartments();
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const tab = params.get('tab');
+    const budgetId = params.get('budgetId');
+
+    if (tab === 'warning') {
+      setActiveTab('warning');
+    }
+
+    if (budgetId && tab === 'warning') {
+      setHighlightBudgetId(Number(budgetId));
+      setTimeout(() => {
+        const targetCard = document.getElementById(`budget-card-${budgetId}`);
+        if (targetCard) {
+          targetCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 500);
+    }
+  }, [location.search, warningData.length]);
 
   useEffect(() => {
     if (activeTab === 'list') {
@@ -356,6 +380,11 @@ const Budget: React.FC = () => {
       title: '报销单号',
       dataIndex: 'reimburseNo',
       width: 160,
+      render: (val: string, record: any) => (
+        <a onClick={() => window.open(`#/reimbursement/${record.reimbursementId}`, '_blank')}>
+          {val}
+        </a>
+      ),
     },
     {
       title: '标题',
@@ -369,35 +398,65 @@ const Budget: React.FC = () => {
       width: 100,
     },
     {
-      title: '金额',
-      dataIndex: 'amount',
+      title: '报销总金额',
+      dataIndex: 'totalAmount',
       width: 120,
-      render: (val: number) => `¥${val.toFixed(2)}`,
+      render: (val: number) => <span style={{ color: '#666' }}>¥{val.toFixed(2)}</span>,
     },
     {
-      title: '发票号',
-      dataIndex: 'invoiceNo',
-      width: 140,
-    },
-    {
-      title: '费用说明',
-      dataIndex: 'description',
-      ellipsis: true,
-    },
-    {
-      title: '状态',
-      dataIndex: 'status',
+      title: '本类别占用',
+      dataIndex: 'categoryAmount',
       width: 120,
-      render: (val: string) => {
-        const statusNames: Record<string, string> = {
-          PENDING_FINANCE: '待财务审核',
-          APPROVED: '审核通过',
-          PAID: '已支付',
-        };
-        return statusNames[val] || val;
-      },
+      render: (val: number) => <strong style={{ color: '#1890ff' }}>¥{val.toFixed(2)}</strong>,
+    },
+    {
+      title: '审批阶段',
+      dataIndex: 'approvalStage',
+      width: 120,
+      render: (val: string) => <Tag color="blue">{val}</Tag>,
+    },
+    {
+      title: '预算扣减',
+      dataIndex: 'budgetDeducted',
+      width: 100,
+      render: (val: boolean) => (
+        <Tag color={val ? 'green' : 'default'}>
+          {val ? '✓ 已扣减' : '待扣减'}
+        </Tag>
+      ),
+    },
+    {
+      title: '提交日期',
+      dataIndex: 'submitDate',
+      width: 120,
+      render: (val: string) => val ? new Date(val).toLocaleDateString() : '-',
     },
   ];
+
+  const expandedRowRender = (record: any) => (
+    <div style={{ padding: '8px 24px', background: '#fafafa' }}>
+      <div style={{ fontWeight: 600, marginBottom: 8, color: '#333' }}>
+        费用明细（共 {record.categoryItems?.length || 0} 项）
+      </div>
+      <Table
+        size="small"
+        columns={[
+          { title: '序号', dataIndex: 'index', width: 60, render: (_: any, __: any, i: number) => i + 1 },
+          { title: '费用说明', dataIndex: 'description' },
+          { title: '发票号码', dataIndex: 'invoiceNo', width: 160 },
+          {
+            title: '金额',
+            dataIndex: 'amount',
+            width: 120,
+            render: (val: number) => `¥${val.toFixed(2)}`,
+          },
+        ]}
+        dataSource={record.categoryItems || []}
+        rowKey="id"
+        pagination={false}
+      />
+    </div>
+  );
 
   return (
     <div className="page-container">
@@ -550,9 +609,12 @@ const Budget: React.FC = () => {
               {warningData.map((item) => (
                 <Col span={12} key={item.id}>
                   <Card
+                    id={`budget-card-${item.id}`}
                     style={{
                       borderLeft: `4px solid ${getWarningBorderColor(item.warningLevel)}`,
                       background: getWarningBgColor(item.warningLevel),
+                      boxShadow: highlightBudgetId === item.id ? '0 0 0 3px rgba(24, 144, 255, 0.5)' : 'none',
+                      transition: 'box-shadow 0.3s',
                     }}
                     bodyStyle={{ padding: '16px 20px' }}
                     onClick={() => handleViewDetail(item)}
@@ -706,11 +768,12 @@ const Budget: React.FC = () => {
               dataSource={detailData}
               rowKey="id"
               loading={detailLoading}
-              scroll={{ x: 900 }}
+              scroll={{ x: 1000 }}
+              expandable={{ expandedRowRender, defaultExpandAllRows: false }}
               pagination={{
                 pageSize: 10,
                 showSizeChanger: true,
-                showTotal: (t) => `共 ${t} 条占用记录`,
+                showTotal: (t) => `共 ${t} 张报销单`,
               }}
             />
           </div>

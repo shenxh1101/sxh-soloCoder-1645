@@ -49,7 +49,7 @@ export async function approveReimbursement(
     include: { approver: true },
   });
 
-  let nextStatus = ReimbursementStatus.PENDING_FINANCE;
+  let nextStatus: ReimbursementStatus = ReimbursementStatus.PENDING_FINANCE;
   let nextStepMessage = '等待财务审核';
 
   if (isFirstApproval && reimbursement.totalAmount >= ESCALATION_THRESHOLD) {
@@ -180,6 +180,58 @@ export async function rejectReimbursement(
 
   sendToRenderer('notification:new', { type: 'rejection', reimbursementId });
   return updated;
+}
+
+export async function validateFinanceApprove(reimbursementId: number): Promise<{ valid: boolean; errors: string[] }> {
+  const reimbursement = await getReimbursementById(reimbursementId);
+  const errors: string[] = [];
+
+  if (!reimbursement) {
+    return { valid: false, errors: ['报销单不存在'] };
+  }
+
+  if (reimbursement.status !== ReimbursementStatus.PENDING_FINANCE) {
+    return { valid: false, errors: [`当前状态为${reimbursement.status}，不允许财务审核`] };
+  }
+
+  const itemsData = reimbursement.items.map((item: any) => ({
+    category: item.category as BudgetCategory,
+    amount: item.amount,
+    invoiceNo: item.invoiceNo,
+    invoiceDate: item.invoiceDate,
+    description: item.description || '',
+  }));
+
+  const categoryValidation = await validateFinanceCategoryMatch(itemsData);
+  if (!categoryValidation.valid) {
+    errors.push(...categoryValidation.errors);
+  }
+
+  const submitDate = reimbursement.submitDate || new Date();
+  const year = submitDate.getFullYear();
+  const month = submitDate.getMonth() + 1;
+
+  if (reimbursement.departmentId) {
+    const categoryTotals: Record<string, number> = {};
+    for (const item of reimbursement.items) {
+      categoryTotals[item.category] = (categoryTotals[item.category] || 0) + item.amount;
+    }
+    for (const [category, total] of Object.entries(categoryTotals)) {
+      const budgetCheck = await checkBudgetBalance(
+        reimbursement.departmentId,
+        category as BudgetCategory,
+        year,
+        month,
+        total
+      );
+      if (!budgetCheck.sufficient) {
+        const categoryName = getCategoryName(category as BudgetCategory);
+        errors.push(`${categoryName}预算不足，缺口¥${(total - budgetCheck.remaining).toFixed(2)}`);
+      }
+    }
+  }
+
+  return { valid: errors.length === 0, errors };
 }
 
 export async function financeApprove(

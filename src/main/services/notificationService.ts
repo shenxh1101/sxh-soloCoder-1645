@@ -21,9 +21,15 @@ export async function createNotification(data: any): Promise<Notification> {
     data: {
       employeeId: data.employeeId,
       reimbursementId: data.reimbursementId,
+      budgetId: data.budgetId,
       title: data.title,
       content: data.content,
       type: data.type,
+    },
+    include: {
+      reimbursement: {
+        include: { employee: true },
+      },
     },
   });
 }

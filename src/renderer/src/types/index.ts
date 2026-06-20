@@ -100,11 +100,34 @@ export interface Notification {
   employeeId: number;
   reimbursementId?: number;
   reimbursement?: Reimbursement;
+  budgetId?: number;
+  budget?: Budget;
   title: string;
   content: string;
   isRead: boolean;
   type: string;
   createdAt: string;
+}
+
+export interface BudgetReimbursementDetail {
+  id: number;
+  reimbursementId: number;
+  reimburseNo: string;
+  title: string;
+  employeeName: string;
+  departmentName: string;
+  totalAmount: number;
+  categoryAmount: number;
+  approvalStage: string;
+  budgetDeducted: boolean;
+  status: string;
+  submitDate: string | null;
+  categoryItems: {
+    id: number;
+    description: string;
+    amount: number;
+    invoiceNo: string;
+  }[];
 }
 
 export interface ValidationResult {
