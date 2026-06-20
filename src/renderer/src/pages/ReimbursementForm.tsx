@@ -121,7 +121,7 @@ const ReimbursementForm: React.FC = () => {
     return items.reduce((sum, item) => sum + (item.amount || 0), 0);
   };
 
-  const validateItems = async (): Promise<boolean> => {
+  const validateItems = async (): Promise<{ valid: boolean; errors: string[] }> => {
     const now = new Date();
     const validationData = {
       items: items.map((item) => ({
@@ -137,8 +137,9 @@ const ReimbursementForm: React.FC = () => {
     };
 
     const result = await api.validateReimbursement(validationData);
-    setValidationErrors(result.errors || []);
-    return result.valid;
+    const errors = result.errors || [];
+    setValidationErrors(errors);
+    return { valid: result.valid, errors };
   };
 
   const handleSave = async () => {
@@ -201,25 +202,47 @@ const ReimbursementForm: React.FC = () => {
       }
 
       setSubmitting(true);
-      const isValid = await validateItems();
+      const { valid, errors } = await validateItems();
 
-      if (!isValid) {
+      if (!valid) {
         Modal.error({
           title: '校验不通过，无法提交',
-          width: 600,
+          width: 620,
+          okText: '我知道了',
           content: (
             <div>
-              <p>请修正以下问题后再次提交：</p>
-              <ul style={{ margin: 0, paddingLeft: 20 }}>
-                {validationErrors.map((err, idx) => (
-                  <li key={idx} style={{ color: '#ff4d4f', marginBottom: 6 }}>
-                    {err}
-                  </li>
-                ))}
-              </ul>
+              <p style={{ marginBottom: 12, color: '#595959' }}>
+                共发现 <strong style={{ color: '#ff4d4f' }}>{errors.length}</strong> 个问题，请修正后再次提交：
+              </p>
+              <div
+                style={{
+                  background: '#fff2f0',
+                  border: '1px solid #ffccc7',
+                  borderRadius: 6,
+                  padding: '12px 16px',
+                  maxHeight: 320,
+                  overflowY: 'auto',
+                }}
+              >
+                <ol style={{ margin: 0, paddingLeft: 24 }}>
+                  {errors.map((err, idx) => (
+                    <li
+                      key={idx}
+                      style={{
+                        color: '#ff4d4f',
+                        marginBottom: idx < errors.length - 1 ? 8 : 0,
+                        lineHeight: 1.6,
+                      }}
+                    >
+                      {err}
+                    </li>
+                  ))}
+                </ol>
+              </div>
             </div>
           ),
         });
+        setSubmitting(false);
         return;
       }
 

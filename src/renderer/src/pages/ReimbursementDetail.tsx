@@ -140,7 +140,37 @@ const ReimbursementDetail: React.FC = () => {
       message.success('财务审核通过');
       loadDetail();
     } catch (error: any) {
-      message.error(error?.message || '审核失败');
+      const errMsg = error?.message || '审核失败';
+      Modal.error({
+        title: '财务审核未通过，已自动退回',
+        width: 620,
+        okText: '我知道了',
+        content: (
+          <div>
+            <p style={{ color: '#595959', marginBottom: 12 }}>
+              系统检测到以下问题，报销单已被自动退回：
+            </p>
+            <div
+              style={{
+                background: '#fff2f0',
+                border: '1px solid #ffccc7',
+                borderRadius: 6,
+                padding: '12px 16px',
+                maxHeight: 320,
+                overflowY: 'auto',
+                whiteSpace: 'pre-wrap',
+                lineHeight: 1.8,
+              }}
+            >
+              <span style={{ color: '#ff4d4f' }}>{errMsg}</span>
+            </div>
+            <p style={{ color: '#8c8c8c', fontSize: 12, marginTop: 12 }}>
+              请通知申请人修正后重新提交
+            </p>
+          </div>
+        ),
+      });
+      loadDetail();
     }
   };
 

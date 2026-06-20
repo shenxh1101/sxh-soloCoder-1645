@@ -10,11 +10,11 @@ import {
   Tabs,
   message,
   Tag,
+  Modal,
 } from 'antd';
-import { ExportOutlined, BarChartOutlined, PieChartOutlined } from '@ant-design/icons';
+import { ExportOutlined, BarChartOutlined, PieChartOutlined, FolderOpenOutlined } from '@ant-design/icons';
 import { api } from '../utils/auth';
 import { CATEGORY_NAMES } from '../types';
-import * as fs from 'fs';
 
 const Statistics: React.FC = () => {
   const now = new Date();
@@ -54,13 +54,54 @@ const Statistics: React.FC = () => {
 
   const handleExport = async () => {
     try {
-      const savePath = require('path').join(
-        require('os').homedir(),
-        `Desktop/报销月度报表_${year}年${month}月_${Date.now()}.xlsx`
-      );
-      const result = await api.exportMonthlyReport(year, month, savePath);
+      const result = await api.exportMonthlyReport(year, month);
+      if (result?.canceled) {
+        return;
+      }
       if (result?.success) {
-        message.success(`报表导出成功，已保存到：${savePath}`);
+        Modal.success({
+          title: '导出成功',
+          width: 520,
+          okText: '我知道了',
+          content: (
+            <div>
+              <p style={{ marginBottom: 8 }}>
+                月度报表已成功导出！
+              </p>
+              <div
+                style={{
+                  background: '#f6ffed',
+                  border: '1px solid #b7eb8f',
+                  borderRadius: 6,
+                  padding: '12px 16px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <FolderOpenOutlined style={{ color: '#52c41a' }} />
+                  <strong>保存位置</strong>
+                </div>
+                <div
+                  style={{
+                    fontFamily: 'monospace',
+                    background: '#fff',
+                    padding: '8px 12px',
+                    borderRadius: 4,
+                    wordBreak: 'break-all',
+                    color: '#262626',
+                    fontSize: 13,
+                  }}
+                >
+                  {result.filePath}
+                </div>
+              </div>
+              <p style={{ color: '#8c8c8c', fontSize: 12, marginTop: 8 }}>
+                共导出 {result.recordCount || 0} 条报销记录，已自动打开所在文件夹
+              </p>
+            </div>
+          ),
+        });
+      } else {
+        message.error('导出失败');
       }
     } catch (error: any) {
       message.error(error?.message || '导出失败');

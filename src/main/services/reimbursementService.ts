@@ -141,22 +141,66 @@ export async function validateFinanceCategoryMatch(
   const errors: string[] = [];
   const allowedCategories = Object.values(BudgetCategory);
 
+  const categoryKeywords: Record<BudgetCategory, string[]> = {
+    [BudgetCategory.TRAVEL]: ['机票', '飞机票', '火车票', '高铁', '动车', '酒店', '住宿', '差旅', '出差', '航空', '机票', '打票', '行程', '携程', '飞猪', '去哪儿', '航空', '出行'],
+    [BudgetCategory.ENTERTAINMENT]: ['招待', '宴请', '礼品', '礼物', '客户', '应酬', '烟酒', '茶叶', '公关', '商务', '接待'],
+    [BudgetCategory.OFFICE_SUPPLIES]: ['文具', '纸张', '打印', '墨盒', '硒鼓', '笔', '本子', '文件夹', '订书机', '办公', '耗材', '电脑', '打印机', '显示器', '键盘', '鼠标', 'U盘', '硬盘', '设备'],
+    [BudgetCategory.MEAL]: ['餐', '饭', '餐饮', '美食', '外卖', '午餐', '晚餐', '早餐', '聚餐', '食堂', '餐厅', '饭馆', '饭店', '麦当劳', '肯德基', '星巴克', '咖啡'],
+    [BudgetCategory.TRANSPORTATION]: ['出租', '打车', '滴滴', '快车', '专车', '地铁', '公交', '巴士', '出租车', '网约车', '加油', '停车', '过路费', '高速', 'ETC', '加油票'],
+    [BudgetCategory.COMMUNICATION]: ['电话', '话费', '手机', '流量', '通讯', '宽带', '网络', '电信', '移动', '联通'],
+    [BudgetCategory.TRAINING]: ['培训', '课程', '学习', '讲座', '会议', '研讨', '认证', '考试', '教材', '学费'],
+    [BudgetCategory.OTHER]: ['其他', '杂项', '零星'],
+  };
+
+  const categoryHintKeywords: Record<BudgetCategory, string[]> = {
+    [BudgetCategory.TRAVEL]: [],
+    [BudgetCategory.ENTERTAINMENT]: [],
+    [BudgetCategory.OFFICE_SUPPLIES]: [],
+    [BudgetCategory.MEAL]: [],
+    [BudgetCategory.TRANSPORTATION]: [],
+    [BudgetCategory.COMMUNICATION]: [],
+    [BudgetCategory.TRAINING]: [],
+    [BudgetCategory.OTHER]: [],
+  };
+
   items.forEach((item, index) => {
     if (!allowedCategories.includes(item.category)) {
       errors.push(`第${index + 1}项: 费用类别"${item.category}"不是有效的预算科目`);
+      return;
     }
 
-    if (item.description) {
-      const desc = item.description.toLowerCase();
-      if (item.category === BudgetCategory.TRAVEL) {
-        if (!/机票|火车|高铁|酒店|住宿|差旅|出差/.test(item.description)) {
-          if (!/(飞机|航空|出行|交通)/.test(desc)) {
-          }
+    const desc = (item.description || '').trim();
+    const categoryName = getCategoryName(item.category);
+
+    if (!desc || desc.length < 2) {
+      errors.push(`第${index + 1}项: ${categoryName}费用说明过短（"${desc || '空'}"），请补充更详细的费用说明以便审核`);
+      return;
+    }
+
+    const keywords = categoryKeywords[item.category] || [];
+    const descLower = desc.toLowerCase();
+    const matched = keywords.some((kw) => descLower.includes(kw.toLowerCase()));
+
+    if (!matched) {
+      let hintCategory = '';
+      for (const [cat, kws] of Object.entries(categoryKeywords)) {
+        if (cat === item.category) continue;
+        const hasMatch = kws.some((kw) => descLower.includes(kw.toLowerCase()));
+        if (hasMatch) {
+          hintCategory = getCategoryName(cat as BudgetCategory);
+          break;
         }
       }
-      if (item.category === BudgetCategory.MEAL) {
-        if (!/餐|饭|餐饮|美食/.test(desc) && !/餐|饭|餐饮|美食/.test(item.description)) {
-        }
+
+      const expectedExamples = keywords.slice(0, 5).join('、');
+      if (hintCategory) {
+        errors.push(
+          `第${index + 1}项: 费用类别"${categoryName}"与说明"${desc}"明显不匹配。说明内容更像是【${hintCategory}】。${categoryName}通常应包含如：${expectedExamples}等关键词`
+        );
+      } else {
+        errors.push(
+          `第${index + 1}项: 费用类别"${categoryName}"与说明"${desc}"匹配度不足。${categoryName}通常应包含如：${expectedExamples}等关键词，请核对类别是否正确或补充说明`
+        );
       }
     }
   });

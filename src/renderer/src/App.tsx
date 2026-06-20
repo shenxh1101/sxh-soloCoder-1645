@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import Login from './pages/Login';
 import AppLayout from './components/AppLayout';
 import Dashboard from './pages/Dashboard';
@@ -13,13 +13,52 @@ import Statistics from './pages/Statistics';
 import Department from './pages/Department';
 import Employee from './pages/Employee';
 import { getCurrentUser } from './utils/auth';
-import { Employee as EmployeeType } from './types';
+import { Employee as EmployeeType, Role, ROLE_NAMES } from './types';
+import { hasPermission } from './config/menuConfig';
+import { message } from 'antd';
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const user = getCurrentUser();
   if (!user) {
     return <Navigate to="/login" replace />;
   }
+  return <>{children}</>;
+};
+
+const RoleRoute: React.FC<{ children: React.ReactNode; allowedRoles: Role[] }> = ({
+  children,
+  allowedRoles,
+}) => {
+  const user = getCurrentUser();
+  const location = useLocation();
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (!allowedRoles.includes(user.role as Role)) {
+    message.error(`您当前角色为【${ROLE_NAMES[user.role as Role]}】，无权访问该页面`);
+    return <Navigate to="/dashboard" replace />;
+  }
+
+  return <>{children}</>;
+};
+
+const PermissionCheck: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const user = getCurrentUser();
+  const location = useLocation();
+
+  useEffect(() => {
+    if (user) {
+      const path = location.pathname;
+      const exemptPaths = ['/dashboard', '/my-reimbursements', '/reimbursement/new'];
+      const isDetailOrEdit = path.startsWith('/reimbursement/');
+      if (!exemptPaths.includes(path) && !isDetailOrEdit && !hasPermission(user.role as Role, path)) {
+        message.error(`您当前角色为【${ROLE_NAMES[user.role as Role]}】，无权访问该页面`);
+      }
+    }
+  }, [location.pathname, user]);
+
   return <>{children}</>;
 };
 
@@ -42,7 +81,9 @@ const App: React.FC = () => {
           path="/"
           element={
             <PrivateRoute>
-              <AppLayout />
+              <PermissionCheck>
+                <AppLayout />
+              </PermissionCheck>
             </PrivateRoute>
           }
         >
@@ -52,12 +93,54 @@ const App: React.FC = () => {
           <Route path="reimbursement/new" element={<ReimbursementForm />} />
           <Route path="reimbursement/:id" element={<ReimbursementDetail />} />
           <Route path="reimbursement/edit/:id" element={<ReimbursementForm />} />
-          <Route path="approval" element={<Approval />} />
-          <Route path="finance" element={<Finance />} />
-          <Route path="budget" element={<Budget />} />
-          <Route path="statistics" element={<Statistics />} />
-          <Route path="department" element={<Department />} />
-          <Route path="employee" element={<Employee />} />
+          <Route
+            path="approval"
+            element={
+              <RoleRoute allowedRoles={['DEPARTMENT_HEAD', 'ADMIN']}>
+                <Approval />
+              </RoleRoute>
+            }
+          />
+          <Route
+            path="finance"
+            element={
+              <RoleRoute allowedRoles={['FINANCE_HEAD', 'ADMIN']}>
+                <Finance />
+              </RoleRoute>
+            }
+          />
+          <Route
+            path="budget"
+            element={
+              <RoleRoute allowedRoles={['FINANCE_HEAD', 'ADMIN']}>
+                <Budget />
+              </RoleRoute>
+            }
+          />
+          <Route
+            path="statistics"
+            element={
+              <RoleRoute allowedRoles={['FINANCE_HEAD', 'ADMIN', 'DEPARTMENT_HEAD']}>
+                <Statistics />
+              </RoleRoute>
+            }
+          />
+          <Route
+            path="department"
+            element={
+              <RoleRoute allowedRoles={['ADMIN']}>
+                <Department />
+              </RoleRoute>
+            }
+          />
+          <Route
+            path="employee"
+            element={
+              <RoleRoute allowedRoles={['ADMIN']}>
+                <Employee />
+              </RoleRoute>
+            }
+          />
         </Route>
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

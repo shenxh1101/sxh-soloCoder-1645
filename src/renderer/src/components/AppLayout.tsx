@@ -14,7 +14,7 @@ import {
   BellOutlined,
   MailOutlined,
 } from '@ant-design/icons';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { getMenusByRole, MenuItem } from '../config/menuConfig';
 import { getCurrentUser, clearCurrentUser, api } from '../utils/auth';
 import { Notification as NotificationType, ROLE_NAMES } from '../types';
@@ -34,7 +34,7 @@ const iconMap: Record<string, React.ReactNode> = {
   UserOutlined: <UserOutlined />,
 };
 
-const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+const AppLayout: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const user = getCurrentUser();
@@ -200,7 +200,7 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             </Dropdown>
           </div>
         </Header>
-        <Content style={{ margin: 0, padding: 0 }}>{children}</Content>
+        <Content style={{ margin: 0, padding: 0 }}><Outlet /></Content>
       </Layout>
     </Layout>
   );

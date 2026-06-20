@@ -172,9 +172,46 @@ export async function financeApprove(
 
   const categoryValidation = await validateFinanceCategoryMatch(itemsData);
   if (!categoryValidation.valid) {
-    throw new Error(
-      `费用类别与预算科目不匹配: ${categoryValidation.errors.join('; ')}`
+    const rejectReason = `财务审核自动退回：费用类别与说明不匹配。具体问题：\n${categoryValidation.errors.map((e, i) => `${i + 1}. ${e}`).join('\n')}`;
+
+    await prisma.approvalRecord.create({
+      data: {
+        reimbursementId,
+        approverId,
+        approvalType: ApprovalType.FINANCE,
+        action: ApprovalAction.REJECT,
+        comment: rejectReason,
+      },
+    });
+
+    const rejected = await prisma.reimbursement.update({
+      where: { id: reimbursementId },
+      data: {
+        status: ReimbursementStatus.REJECTED,
+      },
+      include: {
+        employee: { include: { department: true } },
+        department: true,
+        items: true,
+        approvals: { include: { approver: true } },
+      },
+    });
+
+    await createNotification({
+      employeeId: reimbursement.employeeId,
+      reimbursementId,
+      title: '报销单财务审核未通过（自动退回）',
+      content: `您的报销单"${reimbursement.title}"因费用类别与说明不匹配被自动退回。\n具体原因：${categoryValidation.errors.join('；')}`,
+      type: 'finance_rejection',
+    });
+
+    sendToRenderer('notification:new', { type: 'finance_rejected', reimbursementId });
+    showDesktopNotification(
+      '财务审核自动退回',
+      `报销单"${reimbursement.title}"因类别不匹配被退回`
     );
+
+    throw new Error(rejectReason);
   }
 
   const submitDate = reimbursement.submitDate || new Date();

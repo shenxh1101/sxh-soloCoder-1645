@@ -52,7 +52,7 @@ const electronAPI = {
     ipcRenderer.invoke('statistics:byDepartment', year, month),
   getStatisticsByCategory: (year: number, month: number) =>
     ipcRenderer.invoke('statistics:byCategory', year, month),
-  exportMonthlyReport: (year: number, month: number, filePath: string) =>
+  exportMonthlyReport: (year: number, month: number, filePath?: string) =>
     ipcRenderer.invoke('statistics:exportReport', year, month, filePath),
 
   checkOverdueReimbursements: () =>
